@@ -9,7 +9,7 @@ import shutil
 import time
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'  # Replace with a strong secret key
+app.secret_key = 'x234567890-axAkfkcodkakfe45ythyngfde34rredfrwkjfeljgdlksrsie'  # Replace with a strong secret key
 logging.basicConfig(level=logging.DEBUG)
 
 # Add these global variables at the top level
@@ -29,7 +29,7 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username == 'Travel' and password == 'TRAVEL-AGENCY':
+        if username == 'Business' and password == 'Multi-Agent-AI':
             session['logged_in'] = True
             return redirect(url_for('index'))
         else:

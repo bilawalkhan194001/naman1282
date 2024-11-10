@@ -1,7 +1,7 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
 const moderators = new Set(); // Add any default moderator numbers here
-let assistantKey = 'asst_7D9opuwqYdQJeRIdRMAaHoZG';
+let assistantKey = 'asst_6UQxArCPIl9muppfFn8h06YI';
 const userThreads = {};
 const userMessages = {};
 const userMessageQueue = {};
@@ -409,44 +409,99 @@ function showMenu(isAdmin, isModerator) {
 }
 
 async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message) {
-    // Check if the sender is the bot itself
     if (senderNumber === client.info.wid.user) {
         return null;
     }
 
-    // Check if the user is in the ignore list (meaning they should be ignored)
     if (isIgnored(senderNumber)) {
         return null;
     }
 
     let messageToStore = '';
 
-    // Handle voice messages
-    if (message.type === 'ptt' || message.type === 'audio') {
-        try {
+    try {
+        if (message.type === 'ptt' || message.type === 'audio') {
             const media = await message.downloadMedia();
             const audioBuffer = Buffer.from(media.data, 'base64');
             const transcription = await transcribeAudio(assistantOrOpenAI, audioBuffer);
             messageToStore = `Transcribed voice message: ${transcription}`;
-        } catch (error) {
-            console.error(`Error processing voice message: ${error.message}`);
-            messageToStore = "Sorry, I couldn't process your voice message.";
-        }
-    } else if (message.type === 'document' || message.type === 'image') {
-        // Ignore documents and images
-        console.log(`Ignored ${message.type} message from ${senderNumber}`);
-        return null;
-    } else {
-        // For text messages and other types
-        messageToStore = message.body || `A message of type ${message.type} was received`;
-    }
+        } else if (message.type === 'document') {
+            // Handle documents gracefully
+            return "As a vision model, I can only process images at the moment. Please send your document as an image if possible.";
+        } else if (message.type === 'image') {
+            const media = await message.downloadMedia();
+            
+            // Check file size (10MB limit for example)
+            const fileSizeInMB = Buffer.from(media.data, 'base64').length / (1024 * 1024);
+            if (fileSizeInMB > 10) {
+                return "The image is too large to process. Please send an image smaller than 10MB.";
+            }
 
-    // Process the message directly with OpenAI
-    const response = await processUserMessages(client, assistantOrOpenAI, senderNumber, messageToStore);
-    if (response) {
-        await client.sendMessage(`${senderNumber}@c.us`, response);
+            // Check supported image types
+            const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+            if (!supportedTypes.includes(media.mimetype)) {
+                return "Please send images in JPEG, PNG, GIF, or WEBP format.";
+            }
+
+            const response = await processImageOrDocument(assistantOrOpenAI, media, message.body);
+            return response;
+        } else {
+            messageToStore = message.body || `A message of type ${message.type} was received`;
+        }
+
+        const response = await processUserMessages(client, assistantOrOpenAI, senderNumber, messageToStore);
+        if (response) {
+            await client.sendMessage(`${senderNumber}@c.us`, response);
+        }
+        return null;
+    } catch (error) {
+        console.error(`Error processing message: ${error.message}`);
+        return "I encountered an issue processing your message. I can handle images and text messages - please try again!";
     }
-    return null;
+}
+
+async function processImageOrDocument(assistantOrOpenAI, media, text) {
+    try {
+        // Only process images
+        if (!media.mimetype.startsWith('image/')) {
+            return "I can only analyze images at the moment.";
+        }
+
+        const base64Data = media.data;
+        const defaultPrompt = "What's in this image?";
+
+        // Prepare the messages array with content
+        const messages = [
+            {
+                role: "user",
+                content: [
+                    // Include text if provided, otherwise use default prompt
+                    { type: "text", text: text || defaultPrompt },
+                    // Include the image
+                    {
+                        type: "image_url",
+                        image_url: {
+                            url: `data:${media.mimetype};base64,${base64Data}`
+                        }
+                    }
+                ]
+            }
+        ];
+
+        // Make the API request using the current GPT-4 Vision model
+        const response = await assistantOrOpenAI.chat.completions.create({
+            model: "gpt-4o",
+            messages: messages,
+            max_tokens: 1000,
+            temperature: 0.7
+        });
+
+        return response.choices[0].message.content;
+    } catch (error) {
+        console.error('Error in processImageOrDocument:', error);
+        return "I can analyze images for you. Please send me an image and I'll describe what I see!";
+    }
 }
 
 async function processUserMessages(client, assistantOrOpenAI, senderNumber, message) {
