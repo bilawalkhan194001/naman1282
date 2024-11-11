@@ -567,6 +567,26 @@ async function generateAudioResponse(assistantOrOpenAI, text) {
     return buffer;
 }
 
+// Add this to your existing logEvent function
+function logEvent(message) {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}`;
+    fs.appendFileSync('bot.log', logMessage + '\n');
+    console.log(logMessage);
+    
+    // Add system information logging
+    if (message.includes('error') || message.includes('Error')) {
+        const systemInfo = {
+            platform: process.platform,
+            arch: process.arch,
+            nodeVersion: process.version,
+            memory: process.memoryUsage(),
+            uptime: process.uptime()
+        };
+        fs.appendFileSync('bot.log', `System Info: ${JSON.stringify(systemInfo, null, 2)}\n`);
+    }
+}
+
 module.exports = {
     showMenu,
     parseTimeString,

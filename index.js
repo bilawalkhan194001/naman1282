@@ -23,19 +23,9 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--single-process',
-            '--disable-gpu',
-            '--disable-software-rasterizer',
-            '--disable-extensions',
-            '--disable-default-apps',
-            '--disable-features=site-per-process',
-            '--disable-features=TranslateUI',
-            '--disable-features=IsolateOrigins',
-            '--disable-features=site-per-process',
-            '--disable-features=NetworkService',
-            '--disable-features=NetworkServiceInProcess'
+            '--disable-gpu'
         ],
-        executablePath: '/usr/local/bin/chrome-wrapper',
-        ignoreDefaultArgs: ['--disable-extensions'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     }
 });
 
