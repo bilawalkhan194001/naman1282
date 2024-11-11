@@ -14,17 +14,13 @@ if ! command -v python3 &> /dev/null; then
     sudo yum install -y python3 python3-pip
 fi
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
 # Install dependencies
 npm install
 pip3 install -r requirements.txt
 
 # Set environment variables
-export FLASK_ENV=production
+export FLASK_DEBUG=0
 export FLASK_APP=dashboard.py
 
 # Start the Flask application with Gunicorn
-./venv/bin/gunicorn --bind 0.0.0.0:8080 dashboard:app --pid gunicorn.pid
+gunicorn --bind 0.0.0.0:8080 dashboard:app --pid gunicorn.pid --daemon
