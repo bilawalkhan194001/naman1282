@@ -24,9 +24,18 @@ const client = new Client({
             '--no-zygote',
             '--single-process',
             '--disable-gpu',
-            '--disable-software-rasterizer'
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--disable-features=site-per-process',
+            '--disable-features=TranslateUI',
+            '--disable-features=IsolateOrigins',
+            '--disable-features=site-per-process',
+            '--disable-features=NetworkService',
+            '--disable-features=NetworkServiceInProcess'
         ],
-        executablePath: '/usr/bin/google-chrome',
+        executablePath: '/usr/local/bin/chrome-wrapper',
+        ignoreDefaultArgs: ['--disable-extensions'],
     }
 });
 
