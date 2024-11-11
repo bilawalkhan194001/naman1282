@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 const functions = require('./functions');
 const fs = require('fs');
 const path = require('path');
+const fetch = require('node-fetch');
 
 const assistant = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -42,6 +43,9 @@ if (!fs.existsSync(picsFolder)) {
     fs.mkdirSync(picsFolder);
 }
 
+// Add this flag at the top with other variables
+let isResetMode = false;
+
 function stopBot() {
     isBotActive = false;
     console.log('Bot has been paused.');
@@ -52,8 +56,17 @@ function startBot() {
     console.log('Bot is now active.');
 }
 
+// Example logging to a file
+function logEvent(message) {
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync('bot.log', `[${timestamp}] ${message}\n`);
+    console.log(`[${timestamp}] ${message}`); // Also log to console for real-time monitoring
+}
+
+logEvent('Bot initialization started.');
+
 client.on('qr', (qr) => {
-    console.log('QR Code received, generating image...');
+    logEvent('QR Code received, generating image...');
     qrcode.toFile('qr_code.png', qr, {
         color: {
             dark: '#000000',
@@ -61,26 +74,26 @@ client.on('qr', (qr) => {
         }
     }, (err) => {
         if (err) {
+            logEvent(`Error generating QR code: ${err}`);
             console.error('Error generating QR code:', err);
         } else {
-            console.log('QR code image generated successfully');
+            logEvent('QR code image generated successfully.');
         }
     });
 });
 
-// Call this during initialization
 client.on('ready', async () => {
-    console.log('Client is ready!');
+    logEvent('Client is ready!');
     botNumber = client.info.wid.user;
-    console.log(`Bot number: ${botNumber}`);
+    logEvent(`Bot number: ${botNumber}`);
 
     if (!adminNumber.includes(botNumber)) {
         adminNumber.push(botNumber);
-        console.log(`Bot number ${botNumber} added to admin list.`);
+        logEvent(`Bot number ${botNumber} added to admin list.`);
     }
 
     functions.loadIgnoreList();
-
+    
     setInterval(checkForNewMessages, 1000);
 
     // Notify the server that the bot is connected
@@ -90,11 +103,14 @@ client.on('ready', async () => {
             'Content-Type': 'application/json',
         },
     })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data.message);
-        })
-        .catch(error => console.error('Error updating bot status:', error));
+    .then(response => response.json())
+    .then(data => {
+        logEvent(`Server notification: ${data.message}`);
+    })
+    .catch(error => {
+        logEvent(`Error updating bot status: ${error}`);
+        console.error('Error updating bot status:', error);
+    });
 });
 
 async function checkForNewMessages() {
@@ -161,7 +177,27 @@ client.on('message_create', async (message) => {
 });
 
 client.on('error', (error) => {
+    logEvent(`An error occurred: ${error.message}`);
     console.error('An error occurred:', error);
 });
 
+client.on('disconnected', (reason) => {
+    logEvent(`Client was disconnected: ${reason}`);
+    
+    // Notify the dashboard that the bot is disconnected
+    fetch('http://localhost:8080/set_bot_disconnected', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    }).then(() => {
+        logEvent('Dashboard notified of bot disconnection.');
+    }).catch(error => {
+        logEvent(`Error updating disconnected status: ${error}`);
+        console.error('Error updating disconnected status:', error);
+    });
+});
+
 client.initialize();
+
+logEvent('Bot initialized successfully.');
