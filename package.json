@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.8.0",
+    "axios": "^1.7.7",
     "dotenv": "^16.5.0",
     "form-data": "^4.1.0",
     "openai": "^4.63.0",
