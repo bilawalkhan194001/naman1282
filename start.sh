@@ -27,14 +27,12 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 npm install
 pip3 install -r requirements.txt
 
 # Set environment variables
 export FLASK_ENV=production
 export FLASK_APP=dashboard.py
-export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Get public IP
 PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)

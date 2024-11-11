@@ -15,17 +15,7 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process',
-            '--disable-gpu'
-        ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+        args: ['--no-sandbox'],
     }
 });
 
@@ -56,153 +46,61 @@ if (!fs.existsSync(picsFolder)) {
 // Add this flag at the top with other variables
 let isResetMode = false;
 
-// Add these variables for reconnection logic
-let isReconnecting = false;
-const MAX_RECONNECT_ATTEMPTS = 5;
-let reconnectAttempts = 0;
-
-/**
- * Initializes the WhatsApp client with event handlers.
- */
-function initializeClient() {
-    client.on('qr', (qr) => {
-        logEvent('QR Code received, generating image...');
-        qrcode.toFile('qr_code.png', qr, {
-            color: {
-                dark: '#000000',
-                light: '#ffffff'
-            }
-        }, (err) => {
-            if (err) {
-                logEvent(`Error generating QR code: ${err}`);
-                console.error('Error generating QR code:', err);
-            } else {
-                logEvent('QR code image generated successfully.');
-            }
-        });
-    });
-
-    client.on('ready', async () => {
-        logEvent('Client is ready!');
-        botNumber = client.info.wid.user;
-        logEvent(`Bot number: ${botNumber}`);
-
-        if (!adminNumber.includes(botNumber)) {
-            adminNumber.push(botNumber);
-            logEvent(`Bot number ${botNumber} added to admin list.`);
-        }
-
-        functions.loadIgnoreList();
-
-        setInterval(checkForNewMessages, 1000);
-
-        // Notify the server that the bot is connected
-        fetch('http://localhost:8080/set_bot_connected', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        })
-            .then(response => response.json())
-            .then(data => {
-                logEvent(`Server notification: ${data.message}`);
-            })
-            .catch(error => {
-                logEvent(`Error updating bot status: ${error}`);
-                console.error('Error updating bot status:', error);
-            });
-    });
-
-    client.on('disconnected', (reason) => {
-        logEvent(`Client was disconnected: ${reason}`);
-
-        // Notify the dashboard that the bot is disconnected
-        fetch('http://localhost:8080/set_bot_disconnected', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        }).then(() => {
-            logEvent('Dashboard notified of bot disconnection.');
-        }).catch(error => {
-            logEvent(`Error updating disconnected status: ${error}`);
-            console.error('Error updating disconnected status:', error);
-        });
-
-        attemptReconnect();
-    });
-
-    client.on('error', (error) => {
-        logEvent(`An error occurred: ${error.message}`);
-        console.error('An error occurred:', error);
-    });
-
-    client.on('message_create', async (message) => {
-        await processMessage(message);
-    });
-
-    client.initialize();
-    logEvent('Bot initialized successfully.');
-}
-
-/**
- * Attempts to reconnect the WhatsApp client with exponential backoff.
- */
-function attemptReconnect() {
-    if (isReconnecting) return;
-
-    isReconnecting = true;
-    reconnectAttempts += 1;
-
-    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-        logEvent('Max reconnection attempts reached. Please check the logs for further details.');
-        isReconnecting = false;
-        return;
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Exponential backoff up to 30 seconds
-    logEvent(`Attempting to reconnect in ${delay / 1000} seconds... (Attempt ${reconnectAttempts})`);
-
-    setTimeout(() => {
-        logEvent('Reconnecting...');
-        client.destroy(); // Ensure the previous client is fully terminated
-        client.initialize();
-        isReconnecting = false;
-    }, delay);
-}
-
-// Initialize the client for the first time
-initializeClient();
-
-// Modify the stopBot function to also destroy the client
 function stopBot() {
     isBotActive = false;
     console.log('Bot has been paused.');
-    client.destroy();
-    logEvent('Bot has been paused and client destroyed.');
 }
 
-// Modify the startBot function to ensure a fresh start
 function startBot() {
-    if (client.state === 'CONNECTED') {
-        console.log('Bot is already active.');
-        logEvent('Start command received but bot is already active.');
-        return;
-    }
     isBotActive = true;
     console.log('Bot is now active.');
-    logEvent('Bot is now active.');
-    initializeClient();
 }
 
-// Example logging to a file
-function logEvent(message) {
-    const timestamp = new Date().toISOString();
-    fs.appendFileSync('bot.log', `[${timestamp}] ${message}\n`);
-    console.log(`[${timestamp}] ${message}`); // Also log to console for real-time monitoring
-}
+// Update the qr event handler to be simple like the demo
+client.on('qr', (qr) => {
+    console.log('QR Code received, generating image...');
+    qrcode.toFile('qr_code.png', qr, {
+        color: {
+            dark: '#000000',
+            light: '#ffffff'
+        }
+    }, (err) => {
+        if (err) {
+            console.error('Error generating QR code:', err);
+        } else {
+            console.log('QR code image generated successfully');
+        }
+    });
+});
 
-logEvent('Bot initialization started.');
+// Update the ready event to be simple like the demo
+client.on('ready', async () => {
+    console.log('Client is ready!');
+    botNumber = client.info.wid.user;
+    console.log(`Bot number: ${botNumber}`);
+
+    if (!adminNumber.includes(botNumber)) {
+        adminNumber.push(botNumber);
+        console.log(`Bot number ${botNumber} added to admin list.`);
+    }
+
+    functions.loadIgnoreList();
+    
+    setInterval(checkForNewMessages, 1000);
+
+    // Notify the server that the bot is connected
+    fetch('http://localhost:8080/set_bot_connected', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log(data.message);
+    })
+    .catch(error => console.error('Error updating bot status:', error));
+});
 
 async function checkForNewMessages() {
     try {
@@ -262,3 +160,36 @@ async function processMessage(message) {
         // No action needed for bot's own message
     }
 }
+
+client.on('message_create', async (message) => {
+    await processMessage(message);
+});
+
+client.on('error', (error) => {
+    console.error('An error occurred:', error);
+});
+
+client.on('disconnected', (reason) => {
+    console.log('Client was disconnected:', reason);
+    
+    // Clear any existing authentication
+    if (fs.existsSync('.wwebjs_auth')) {
+        try {
+            fs.rmSync('.wwebjs_auth', { recursive: true, force: true });
+        } catch (error) {
+            console.error('Error removing auth folder:', error);
+        }
+    }
+    
+    // Notify the dashboard that the bot is disconnected
+    fetch('http://localhost:8080/set_bot_disconnected', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    }).catch(error => {
+        console.error('Error updating disconnected status:', error);
+    });
+});
+
+client.initialize();

@@ -13,10 +13,6 @@ app = Flask(__name__)
 app.secret_key = 'hgfdsdfghjhgfdrty5434567uyt56uhgfrt6y78765432ertyj'
 logging.basicConfig(level=logging.DEBUG)
 
-# Configure logging at the top of the file
-logging.basicConfig(filename='dashboard.log', level=logging.DEBUG, 
-                    format='%(asctime)s %(levelname)s:%(message)s')
-
 # Add these global variables at the top level
 bot_process = None
 bot_connected = False
@@ -54,43 +50,6 @@ def logout():
 @login_required
 def index():
     return render_template('index.html')
-
-
-@app.route('/start_bot')
-@login_required
-def start_bot():
-    global bot_process, bot_connected
-    try:
-        logging.debug("Start button clicked.")
-        if bot_process is None:
-            logging.debug("No existing bot process found. Attempting to start a new bot.")
-        elif bot_process.poll() is not None:
-            logging.debug("Existing bot process is not active. Starting a new instance.")
-        else:
-            logging.debug(f"Bot is already running with PID: {bot_process.pid}")
-            return jsonify({"message": "Bot is already running", "connected": bot_connected})
-        
-        bot_process = subprocess.Popen(['node', 'index.js'])
-        logging.info(f"Bot started successfully with PID: {bot_process.pid}.")
-        bot_connected = False
-        return jsonify({"message": "Bot started successfully", "connected": False})
-    except Exception as e:
-        logging.error("Error starting bot.", exc_info=True)
-        return jsonify({"message": "Failed to start bot.", "connected": bot_connected}), 500
-
-
-@app.route('/stop_bot')
-@login_required
-def stop_bot():
-    global bot_process, bot_connected
-    if bot_process is not None and bot_process.poll() is None:
-        os.kill(bot_process.pid, signal.SIGTERM)
-        bot_process.wait()
-        bot_process = None
-        bot_connected = False
-        return jsonify({"message": "Bot stopped successfully", "connected": False})
-    else:
-        return jsonify({"message": "Bot is not running", "connected": False})
 
 
 @app.route('/get_qr_code')

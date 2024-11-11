@@ -140,8 +140,6 @@
         </div>
 
         <div class="controls fade-in">
-            <button onclick="startBot()" class="button start">Start Bot</button>
-            <button onclick="stopBot()" class="button stop">Stop Bot</button>
             <button onclick="resetBot()" class="button reset">Reset Bot</button>
         </div>
 
@@ -217,31 +215,6 @@
                         qrCodeFound = true;
                         clearQRCheck();
                     }
-                })
-                .catch(error => console.error('Error:', error));
-        }
-
-        function startBot() {
-            fetch('/start_bot')
-                .then(response => response.json())
-                .then(data => {
-                    console.log(data.message);
-                    if (!data.connected) {
-                        qrCodeFound = false;
-                        startQRCheck();
-                    }
-                })
-                .catch(error => console.error('Error:', error));
-        }
-
-        function stopBot() {
-            fetch('/stop_bot')
-                .then(response => response.json())
-                .then(data => {
-                    console.log(data.message);
-                    updateStatus(false);
-                    document.getElementById('qr-code').innerHTML = '';
-                    clearQRCheck();
                 })
                 .catch(error => console.error('Error:', error));
         }
