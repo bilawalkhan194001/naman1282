@@ -2,4 +2,8 @@ flask
 python-dotenv
 Flask-Session==0.5.0
 gunicorn==20.1.0
+pip
+python3-pip
+python3-venv
+gunicorn
 # $env:OPENAI_API_KEY="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"
