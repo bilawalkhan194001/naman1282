@@ -15,8 +15,8 @@ if ! command -v node &> /dev/null || [[ $(node -v) != v18* ]]; then
     sudo yum install -y nodejs
 fi
 
-# Install Chromium dependencies for Amazon Linux
-echo "Installing Chromium dependencies..."
+# Install Chrome for Amazon Linux 2
+echo "Installing Chrome dependencies..."
 sudo yum update -y
 sudo yum install -y \
     alsa-lib.x86_64 \
@@ -39,9 +39,13 @@ sudo yum install -y \
     xorg-x11-fonts-misc \
     xorg-x11-fonts-Type1 \
     xorg-x11-utils \
-    nss.x86_64 \
-    chromium \
-    chromium-headless-chromium
+    nss.x86_64
+
+# Install Chrome
+echo "Installing Chrome..."
+curl -Lo chrome.rpm https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm
+sudo yum install -y ./chrome.rpm
+rm chrome.rpm
 
 # Install Python and pip if not already installed
 if ! command -v python3 &> /dev/null; then
@@ -64,7 +68,7 @@ export FLASK_ENV=production
 export FLASK_APP=dashboard.py
 # Set Puppeteer environment variables
 export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-export PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+export PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 
 # Get public IP
 PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
