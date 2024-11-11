@@ -56,9 +56,24 @@ def index():
 def start_bot():
     global bot_process, bot_connected
     if bot_process is None or bot_process.poll() is not None:
-        bot_process = subprocess.Popen(['node', 'index.js'])
-        bot_connected = False
-        return jsonify({"message": "Bot started successfully", "connected": False})
+        # Ensure any existing process is properly terminated
+        if bot_process is not None:
+            try:
+                os.kill(bot_process.pid, signal.SIGINT)
+                bot_process.wait(timeout=10)
+            except (ProcessLookupError, subprocess.TimeoutExpired):
+                pass
+        
+        # Start the new process
+        try:
+            bot_process = subprocess.Popen(['node', 'index.js'], 
+                                         stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE,
+                                         universal_newlines=True)
+            bot_connected = False
+            return jsonify({"message": "Bot started successfully", "connected": False})
+        except Exception as e:
+            return jsonify({"message": f"Failed to start bot: {str(e)}", "connected": False})
     else:
         return jsonify({"message": "Bot is already running", "connected": bot_connected})
 
@@ -68,8 +83,17 @@ def start_bot():
 def stop_bot():
     global bot_process, bot_connected
     if bot_process is not None and bot_process.poll() is None:
-        os.kill(bot_process.pid, signal.SIGTERM)
-        bot_process.wait()
+        # Send SIGINT instead of SIGTERM to allow for graceful shutdown
+        os.kill(bot_process.pid, signal.SIGINT)
+        
+        # Give the process some time to cleanup
+        try:
+            bot_process.wait(timeout=10)  # Wait up to 10 seconds for the process to end
+        except subprocess.TimeoutExpired:
+            # If it doesn't exit within 10 seconds, force kill it
+            os.kill(bot_process.pid, signal.SIGKILL)
+            bot_process.wait()
+            
         bot_process = None
         bot_connected = False
         return jsonify({"message": "Bot stopped successfully", "connected": False})

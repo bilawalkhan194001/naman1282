@@ -35,6 +35,9 @@ let lastProcessedMessageTime = 0;
 // Add this Set to keep track of processed message IDs
 const processedMessageIds = new Set();
 
+// Add at the top level of the file, after the client initialization
+let isInitialized = false;
+
 function stopBot() {
     isBotActive = false;
     console.log('Bot has been paused.');
@@ -152,8 +155,46 @@ client.on('message_create', async (message) => {
     await processMessage(message);
 });
 
+// Modify the error handler
 client.on('error', (error) => {
-    console.error('An error occurred:', error);
+    console.error('WhatsApp client error:', error);
+    // If the error is fatal, try to reinitialize
+    if (error.message.includes('browser has disconnected')) {
+        isInitialized = false;
+        setTimeout(initializeClient, 5000); // Try to reinitialize after 5 seconds
+    }
 });
 
-client.initialize();
+// Modify the initialize process
+async function initializeClient() {
+    try {
+        if (!isInitialized) {
+            console.log('Initializing WhatsApp client...');
+            await client.initialize();
+            isInitialized = true;
+            console.log('WhatsApp client initialized successfully');
+        }
+    } catch (error) {
+        console.error('Failed to initialize WhatsApp client:', error);
+        process.exit(1);
+    }
+}
+
+// Enhance the SIGINT handler
+process.on('SIGINT', async () => {
+    console.log('Received SIGINT. Closing WhatsApp client...');
+    if (client) {
+        try {
+            isInitialized = false;
+            await client.destroy();
+            console.log('WhatsApp client closed successfully');
+        } catch (err) {
+            console.error('Error while closing WhatsApp client:', err);
+        } finally {
+            process.exit(0);
+        }
+    }
+});
+
+// Replace the existing client.initialize() call with:
+initializeClient();

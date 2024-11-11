@@ -1,9 +1,12 @@
 #!/bin/bash
 
-# Stop Gunicorn (Flask app)
 if [ -f gunicorn.pid ]; then
+    echo "Stopping gunicorn process..."
     kill $(cat gunicorn.pid)
     rm gunicorn.pid
+else
+    echo "No gunicorn.pid found, trying pkill..."
+    pkill gunicorn
 fi
 
 # Stop Node.js app

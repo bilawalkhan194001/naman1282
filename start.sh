@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Kill any existing gunicorn processes
+if [ -f gunicorn.pid ]; then
+    echo "Stopping existing gunicorn process..."
+    kill $(cat gunicorn.pid) 2>/dev/null || true
+    rm gunicorn.pid 2>/dev/null || true
+fi
+pkill gunicorn 2>/dev/null || true
+
 # Install Node.js 18.x if not already installed
 if ! command -v node &> /dev/null || [[ $(node -v) != v18* ]]; then
     echo "Installing Node.js 18.x..."
@@ -32,6 +40,9 @@ echo "======================================"
 echo "Server will be accessible at:"
 echo "http://$PUBLIC_IP:8080"
 echo "======================================"
+
+# Wait a moment to ensure the port is free
+sleep 2
 
 # Start the Flask application with Gunicorn
 ./venv/bin/gunicorn --bind 0.0.0.0:8080 dashboard:app --pid gunicorn.pid
