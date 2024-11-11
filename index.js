@@ -35,8 +35,12 @@ let lastProcessedMessageTime = 0;
 // Add this Set to keep track of processed message IDs
 const processedMessageIds = new Set();
 
-// Add at the top level of the file, after the client initialization
-let isInitialized = false;
+// Add near the start of the file, after the requires
+const picsFolder = path.join(__dirname, 'pics');
+if (!fs.existsSync(picsFolder)) {
+    console.log('Creating pics folder...');
+    fs.mkdirSync(picsFolder);
+}
 
 function stopBot() {
     isBotActive = false;
@@ -64,7 +68,8 @@ client.on('qr', (qr) => {
     });
 });
 
-client.on('ready', () => {
+// Call this during initialization
+client.on('ready', async () => {
     console.log('Client is ready!');
     botNumber = client.info.wid.user;
     console.log(`Bot number: ${botNumber}`);
@@ -75,21 +80,21 @@ client.on('ready', () => {
     }
 
     functions.loadIgnoreList();
-    
+
     setInterval(checkForNewMessages, 1000);
 
     // Notify the server that the bot is connected
-    fetch('http://localhost:8080/set_bot_connected', { 
+    fetch('http://localhost:8080/set_bot_connected', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
     })
-    .then(response => response.json())
-    .then(data => {
-        console.log(data.message);
-    })
-    .catch(error => console.error('Error updating bot status:', error));
+        .then(response => response.json())
+        .then(data => {
+            console.log(data.message);
+        })
+        .catch(error => console.error('Error updating bot status:', error));
 });
 
 async function checkForNewMessages() {
@@ -155,46 +160,8 @@ client.on('message_create', async (message) => {
     await processMessage(message);
 });
 
-// Modify the error handler
 client.on('error', (error) => {
-    console.error('WhatsApp client error:', error);
-    // If the error is fatal, try to reinitialize
-    if (error.message.includes('browser has disconnected')) {
-        isInitialized = false;
-        setTimeout(initializeClient, 5000); // Try to reinitialize after 5 seconds
-    }
+    console.error('An error occurred:', error);
 });
 
-// Modify the initialize process
-async function initializeClient() {
-    try {
-        if (!isInitialized) {
-            console.log('Initializing WhatsApp client...');
-            await client.initialize();
-            isInitialized = true;
-            console.log('WhatsApp client initialized successfully');
-        }
-    } catch (error) {
-        console.error('Failed to initialize WhatsApp client:', error);
-        process.exit(1);
-    }
-}
-
-// Enhance the SIGINT handler
-process.on('SIGINT', async () => {
-    console.log('Received SIGINT. Closing WhatsApp client...');
-    if (client) {
-        try {
-            isInitialized = false;
-            await client.destroy();
-            console.log('WhatsApp client closed successfully');
-        } catch (err) {
-            console.error('Error while closing WhatsApp client:', err);
-        } finally {
-            process.exit(0);
-        }
-    }
-});
-
-// Replace the existing client.initialize() call with:
-initializeClient();
+client.initialize();
