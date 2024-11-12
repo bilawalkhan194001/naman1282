@@ -1,7 +1,7 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
 const moderators = new Set(); // Add any default moderator numbers here
-let assistantKey = 'asst_6UQxArCPIl9muppfFn8h06YI';
+let assistantKey = 'asst_UaywWwG1mzGWDbKbqNvi4riL';
 const userThreads = {};
 const userMessages = {};
 const userMessageQueue = {};
@@ -308,7 +308,6 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                         } else {
                             return "You don't have permission to use this command.";
                         }
-
                     case '!!no-assist':
                         if (isAdmin || isModerator) {
                             const chat = await message.getChat();
@@ -316,7 +315,7 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                                 return "This command cannot be used in a group chat.";
                             }
                             const recipientNumber = chat.id.user;
-                            removeFromIgnoreList(recipientNumber);
+                            addToIgnoreList(recipientNumber);
                             return `AI assistance disabled for ${recipientNumber}.`;
                         } else {
                             return "You don't have permission to use this command.";
@@ -329,7 +328,7 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                                 return "This command cannot be used in a group chat.";
                             }
                             const recipientNumber = chat.id.user;
-                            addToIgnoreList(recipientNumber);
+                            removeFromIgnoreList(recipientNumber);
                             return getTemplateMessage(recipientNumber); // Send the template message after enabling AI assistance
                         } else {
                             return "You don't have permission to use this command.";
