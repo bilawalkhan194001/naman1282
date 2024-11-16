@@ -32,7 +32,7 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username == 'Travel' and password == 'TRAVEL-AGENCY':
+        if username == 'ai' and password == 'WH102938jp..@' :
             session['logged_in'] = True
             return redirect(url_for('index'))
         else:
