@@ -1,7 +1,7 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
 const moderators = new Set(); // Add any default moderator numbers here
-let assistantKey = 'asst_8FyzAUhhK16dwCUwqoCsls5C';
+let assistantKey = 'asst_ZzwY2yvF7hKbMZLXMPiPhyHy';
 const userThreads = {};
 const userMessages = {};
 const userMessageQueue = {};
@@ -18,6 +18,7 @@ const userProcessingTimers = {};
 // Add these constants at the top of the file
 const IGNORE_LIST_FILE = path.join(__dirname, 'ignore_list.json');
 const ignoreList = new Set();
+const ADMIN_NUMBERS = ['923499490427']; // Add all admin numbers here
 
 // Add these functions to handle saving and loading the ignore list
 
@@ -114,7 +115,7 @@ function clearAllThreads() {
     }
 }
 
-async function generateResponseOpenAI(assistant, senderNumber, userMessage, assistantKey) {
+async function generateResponseOpenAI(assistant, senderNumber, userMessage, assistantKey, client) {
     try {
         if (!userMessage) {
             throw new Error('Empty message received.');
@@ -134,17 +135,69 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
             content: userMessage
         });
 
+        // Define the function that the assistant can call
+        const tools = [{
+            type: "function",
+            function: {
+                name: "handle_human_request",
+                description: "ONLY call this function when a user EXPLICITLY requests to speak with a human representative or customer service agent. Do NOT call this for general greetings or questions that you can handle.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        intent_confirmed: {
+                            type: "boolean",
+                            description: "Set to true ONLY if the user has clearly and explicitly expressed wanting to talk to a human representative (e.g., 'I want to talk to a human', 'connect me to customer service'). Set to false for general conversation."
+                        }
+                    },
+                    required: ["intent_confirmed"]
+                }
+            }
+        }];
+
         const run = await assistant.beta.threads.runs.create(threadId, {
             assistant_id: assistantKey,
+            tools: tools
         });
 
-        await pollRunStatus(assistant, threadId, run.id);
+        // Poll for completion or required actions
+        while (true) {
+            const runStatus = await assistant.beta.threads.runs.retrieve(threadId, run.id);
+
+            if (runStatus.status === 'completed') {
+                break;
+            } else if (runStatus.status === 'requires_action') {
+                const toolCalls = runStatus.required_action.submit_tool_outputs.tool_calls;
+                const toolOutputs = [];
+
+                for (const toolCall of toolCalls) {
+                    if (toolCall.function.name === 'handle_human_request') {
+                        const args = JSON.parse(toolCall.function.arguments);
+                        if (args.intent_confirmed) {
+                            const result = await handleHumanRequest(senderNumber, client);
+                            toolOutputs.push({
+                                tool_call_id: toolCall.id,
+                                output: result
+                            });
+                        }
+                    }
+                }
+
+                if (toolOutputs.length > 0) {
+                await assistant.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+                    tool_outputs: toolOutputs
+                });
+                }
+            } else if (runStatus.status === 'failed') {
+                throw new Error('Run failed');
+            }
+
+            await sleep(1000);
+        }
 
         const messages = await assistant.beta.threads.messages.list(threadId);
         const latestMessage = messages.data[0];
 
         let response = '';
-
         if (latestMessage.content && latestMessage.content.length > 0) {
             for (const content of latestMessage.content) {
                 if (content.type === 'text') {
@@ -511,7 +564,7 @@ async function processUserMessages(client, assistantOrOpenAI, senderNumber, mess
 
     try {
         // Use the default assistantKey directly without subject logic
-        const response = await generateResponseOpenAI(assistantOrOpenAI, senderNumber, message, assistantKey);
+        const response = await generateResponseOpenAI(assistantOrOpenAI, senderNumber, message, assistantKey, client);
 
         // Validate senderNumber format
         const formattedSenderNumber = `${senderNumber}@c.us`;
@@ -566,6 +619,29 @@ async function generateAudioResponse(assistantOrOpenAI, text) {
     return buffer;
 }
 
+// Update the handleHumanRequest function
+async function handleHumanRequest(senderNumber, client) {
+    try {
+        // Prepare the notification message for admin
+        const notificationMessage = `🔔 Human Representative Request:\nFrom: ${senderNumber}\nStatus: Awaiting response`;
+        
+        // Send notification to all admin numbers
+        for (const adminNumber of ADMIN_NUMBERS) {
+            try {
+                await client.sendMessage(`${adminNumber}@c.us`, notificationMessage);
+            } catch (error) {
+                console.error(`Failed to notify admin ${adminNumber}: ${error.message}`);
+            }
+        }
+        
+        // Return a friendly message for the user
+        return "I understand you'd like to speak with a human representative. I've forwarded your request to our customer service team. They will contact you shortly. Thank you for your patience.";
+    } catch (error) {
+        console.error('Error in handleHumanRequest:', error);
+        return "I apologize, but I'm having trouble processing your request. Please try again later.";
+    }
+}
+
 module.exports = {
     showMenu,
     parseTimeString,
@@ -585,4 +661,5 @@ module.exports = {
     isIgnored,
     addToIgnoreList,
     removeFromIgnoreList,
+    handleHumanRequest,
 };
