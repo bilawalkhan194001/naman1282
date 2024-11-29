@@ -1,7 +1,7 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
 const moderators = new Set(); // Add any default moderator numbers here
-let assistantKey = 'asst_ZzwY2yvF7hKbMZLXMPiPhyHy';
+let assistantKey = 'asst_SF6F0GRIRkUQq8OUZ3h17JZp';
 const userThreads = {};
 const userMessages = {};
 const userMessageQueue = {};
@@ -18,7 +18,6 @@ const userProcessingTimers = {};
 // Add these constants at the top of the file
 const IGNORE_LIST_FILE = path.join(__dirname, 'ignore_list.json');
 const ignoreList = new Set();
-const ADMIN_NUMBERS = ['923499490427']; // Add all admin numbers here
 
 // Add these functions to handle saving and loading the ignore list
 
@@ -184,7 +183,7 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
                             const args = JSON.parse(toolCall.function.arguments);
                             if (args.intent_confirmed) {
                                 console.log(`Human request detected from ${senderNumber} with query: ${args.user_query}`);
-                                const result = await handleHumanRequest(senderNumber, client);
+                                const result = await handleHumanRequest(senderNumber, client, ADMIN_NUMBERS);
                                 toolOutputs.push({
                                     tool_call_id: toolCall.id,
                                     output: JSON.stringify({
@@ -722,8 +721,8 @@ async function generateAudioResponse(assistantOrOpenAI, text) {
     return buffer;
 }
 
-// Update the handleHumanRequest function
-async function handleHumanRequest(senderNumber, client) {
+// Modify the handleHumanRequest function signature
+async function handleHumanRequest(senderNumber, client, adminNumbers) {
     try {
         // Check if the sender number is valid
         if (!senderNumber || typeof senderNumber !== 'string') {
@@ -747,7 +746,7 @@ To respond, use: !!respond "${senderNumber}" "your message"`;
         let notifiedAdmins = 0;
         
         // Send notification to all admin numbers
-        for (const adminNumber of ADMIN_NUMBERS) {
+        for (const adminNumber of adminNumbers) {
             try {
                 await client.sendMessage(`${adminNumber}@c.us`, notificationMessage);
                 notifiedAdmins++;

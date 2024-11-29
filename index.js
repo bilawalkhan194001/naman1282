@@ -20,8 +20,8 @@ const client = new Client({
     }
 });
 
-const adminNumber = ['923499490427'];
-console.log(adminNumber); // Example usage
+const ADMIN_NUMBERS = ['923499490427'];
+console.log(ADMIN_NUMBERS); // Example usage
 let isBotActive = true; // Control the bot's active state
 
 // Add these variables to store the last messages
@@ -83,8 +83,8 @@ client.on('ready', async () => {
     botNumber = client.info.wid.user;
     console.log(`Bot number: ${botNumber}`);
 
-    if (!adminNumber.includes(botNumber)) {
-        adminNumber.push(botNumber);
+    if (!ADMIN_NUMBERS.includes(botNumber)) {
+        ADMIN_NUMBERS.push(botNumber);
         console.log(`Bot number ${botNumber} added to admin list.`);
     }
 
@@ -92,7 +92,7 @@ client.on('ready', async () => {
     
     // Start Calendly check interval
     calendlyCheckInterval = setInterval(async () => {
-        const newAppointments = await calendly.checkNewAppointments(client, adminNumber);
+        const newAppointments = await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
         if (newAppointments > 0) {
             console.log(`Found ${newAppointments} new appointment(s)`);
         }
@@ -164,7 +164,7 @@ async function processMessage(message) {
     const senderNumber = senderId.split('@')[0];
     const messageText = message.body || '';
 
-    const isAdmin = adminNumber.includes(senderNumber);
+    const isAdmin = ADMIN_NUMBERS.includes(senderNumber);
     const isModerator = functions.isModerator(senderNumber);
     const isBot = senderNumber === botNumber;
 
