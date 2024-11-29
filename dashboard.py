@@ -7,6 +7,7 @@ import subprocess
 import signal
 import shutil
 import time
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 # Replace with a strong secret key
@@ -16,6 +17,28 @@ logging.basicConfig(level=logging.DEBUG)
 # Add these global variables at the top level
 bot_process = None
 bot_connected = False
+APPOINTMENTS_FILE = 'appointments.json'
+
+def load_appointments():
+    if os.path.exists(APPOINTMENTS_FILE):
+        try:
+            with open(APPOINTMENTS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_appointment(appointment):
+    appointments = load_appointments()
+    appointments.append(appointment)
+    with open(APPOINTMENTS_FILE, 'w') as f:
+        json.dump(appointments, f)
+
+@app.route('/save_appointment', methods=['POST'])
+def save_new_appointment():
+    data = request.json
+    save_appointment(data)
+    return jsonify({"success": True})
 
 
 def login_required(f):
@@ -26,6 +49,39 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+
+@app.route('/get_appointments')
+@login_required
+def get_appointments():
+    appointments = load_appointments()
+
+    # Get filter parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    status = request.args.get('status')
+    search = request.args.get('search', '').lower()
+
+    # Apply filters
+    if start_date:
+        start_date = datetime.strptime(start_date, '%Y-%m-%d')
+        appointments = [a for a in appointments if datetime.strptime(
+            a['start_time'].split('T')[0], '%Y-%m-%d') >= start_date]
+
+    if end_date:
+        end_date = datetime.strptime(end_date, '%Y-%m-%d')
+        appointments = [a for a in appointments if datetime.strptime(
+            a['start_time'].split('T')[0], '%Y-%m-%d') <= end_date]
+
+    if status:
+        appointments = [a for a in appointments if a.get(
+            'status', '').lower() == status.lower()]
+
+    if search:
+        appointments = [a for a in appointments if
+                        search in a.get('invitee_name', '').lower() or
+                        search in a.get('invitee_email', '').lower()]
+
+    return jsonify(appointments)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

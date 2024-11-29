@@ -126,6 +126,165 @@
         .fade-in {
             animation: fadeIn 0.3s ease-out;
         }
+
+        .appointments-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-top: 2rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .appointments-header {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .appointments-header h2 {
+            color: #2d3436;
+            font-size: 1.5rem;
+        }
+
+        .filters {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-input {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .filter-button {
+            background: #00b894;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .filter-button:hover {
+            background: #00a884;
+        }
+
+        .appointment-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid #00b894;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .appointment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .appointment-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #2d3436;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .detail-label {
+            font-size: 0.9rem;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .detail-value {
+            font-size: 1rem;
+            color: #2d3436;
+            font-weight: 500;
+        }
+
+        .appointment-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        .appointment-status.active {
+            background: #00b89415;
+            color: #00b894;
+        }
+
+        .appointment-status.canceled {
+            background: #ff767515;
+            color: #ff7675;
+        }
+
+        .appointment-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .appointment-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .appointment-detail {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .cancel-link {
+            color: #ff7675;
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: color 0.3s ease;
+        }
+
+        .cancel-link:hover {
+            color: #d63031;
+            text-decoration: underline;
+        }
+
+        .appointments-list.loading {
+            position: relative;
+            min-height: 200px;
+        }
+
+        .appointments-list.loading::after {
+            content: "Loading appointments...";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .no-appointments {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+            font-size: 1.1rem;
+        }
     </style>
 </head>
 <body>
@@ -145,6 +304,26 @@
 
         <div id="qr-code" class="qr-code fade-in">
             <!-- QR code will be displayed here -->
+        </div>
+
+        <div class="appointments-section fade-in">
+            <div class="appointments-header">
+                <h2>Calendly Appointments</h2>
+                <div class="filters">
+                    <input type="date" id="start-date" class="filter-input" placeholder="Start Date">
+                    <input type="date" id="end-date" class="filter-input" placeholder="End Date">
+                    <select id="status-filter" class="filter-input">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="canceled">Canceled</option>
+                    </select>
+                    <input type="text" id="search-filter" class="filter-input" placeholder="Search name or email">
+                    <button onclick="applyFilters()" class="filter-button">Apply Filters</button>
+                </div>
+            </div>
+            <div class="appointments-list" id="appointments-list">
+                <!-- Appointments will be loaded here -->
+            </div>
         </div>
     </div>
 
@@ -237,6 +416,103 @@
             statusCheckInterval = setInterval(checkBotStatus, 5000);
             startQRCheck();
         }
+
+        function loadAppointments() {
+            const appointmentsList = document.getElementById('appointments-list');
+            appointmentsList.classList.add('loading');
+            
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+            const status = document.getElementById('status-filter').value;
+            const search = document.getElementById('search-filter').value;
+
+            fetch(`/get_appointments?start_date=${startDate}&end_date=${endDate}&status=${status}&search=${search}`)
+                .then(response => response.json())
+                .then(appointments => {
+                    appointmentsList.classList.remove('loading');
+                    appointmentsList.innerHTML = '';
+
+                    if (appointments.length === 0) {
+                        appointmentsList.innerHTML = `
+                            <div class="no-appointments">
+                                <p>📅 No appointments found</p>
+                                ${search ? '<p>Try adjusting your search filters</p>' : ''}
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    appointments.forEach(appointment => {
+                        const card = createAppointmentCard(appointment);
+                        appointmentsList.appendChild(card);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading appointments:', error);
+                    appointmentsList.classList.remove('loading');
+                    appointmentsList.innerHTML = `
+                        <div class="no-appointments">
+                            <p>❌ Error loading appointments</p>
+                            <p>Please try again later</p>
+                        </div>
+                    `;
+                });
+        }
+
+        function createAppointmentCard(appointment) {
+            const card = document.createElement('div');
+            card.className = `appointment-card ${appointment.status.toLowerCase()}`;
+            
+            const startTime = new Date(appointment.start_time).toLocaleString();
+            const endTime = new Date(appointment.end_time).toLocaleString();
+
+            card.innerHTML = `
+                <div class="appointment-header">
+                    <span class="appointment-name">🗓️ New Appointment</span>
+                    <span class="appointment-status ${appointment.status.toLowerCase()}">
+                        ${appointment.status === 'active' ? '✅' : '❌'} ${appointment.status}
+                    </span>
+                </div>
+                <div class="appointment-details">
+                    <div class="appointment-detail">
+                        <span class="detail-label">👤 Invitee Name</span>
+                        <span class="detail-value">${appointment.invitee_name || 'N/A'}</span>
+                    </div>
+                    <div class="appointment-detail">
+                        <span class="detail-label">📧 Email</span>
+                        <span class="detail-value">${appointment.invitee_email || 'N/A'}</span>
+                    </div>
+                    <div class="appointment-detail">
+                        <span class="detail-label">🕒 Start Time</span>
+                        <span class="detail-value">${startTime}</span>
+                    </div>
+                    <div class="appointment-detail">
+                        <span class="detail-label">🕕 End Time</span>
+                        <span class="detail-value">${endTime}</span>
+                    </div>
+                    <div class="appointment-detail">
+                        <span class="detail-label">📝 Event Type</span>
+                        <span class="detail-value">${appointment.event_type || 'N/A'}</span>
+                    </div>
+                    ${appointment.cancel_url ? `
+                    <div class="appointment-detail">
+                        <span class="detail-label">🔗 Cancellation</span>
+                        <a href="${appointment.cancel_url}" target="_blank" class="cancel-link">Cancel Appointment</a>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            return card;
+        }
+
+        function applyFilters() {
+            loadAppointments();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAppointments();
+            setInterval(loadAppointments, 60000);
+        });
     </script>
 </body>
 </html>

@@ -6,6 +6,7 @@ const functions = require('./functions');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
+const calendly = require('./calendly');
 
 const assistant = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -45,6 +46,9 @@ if (!fs.existsSync(picsFolder)) {
 
 // Add this flag at the top with other variables
 let isResetMode = false;
+
+// Add this after client initialization
+let calendlyCheckInterval;
 
 function stopBot() {
     isBotActive = false;
@@ -86,6 +90,14 @@ client.on('ready', async () => {
 
     functions.loadIgnoreList();
     
+    // Start Calendly check interval
+    calendlyCheckInterval = setInterval(async () => {
+        const newAppointments = await calendly.checkNewAppointments(client, adminNumber);
+        if (newAppointments > 0) {
+            console.log(`Found ${newAppointments} new appointment(s)`);
+        }
+    }, 60000); // Check every minute
+
     setInterval(checkForNewMessages, 1000);
 
     // Notify the server that the bot is connected
@@ -171,6 +183,11 @@ client.on('error', (error) => {
 
 client.on('disconnected', (reason) => {
     console.log('Client was disconnected:', reason);
+    
+    // Clear Calendly check interval
+    if (calendlyCheckInterval) {
+        clearInterval(calendlyCheckInterval);
+    }
     
     // Clear any existing authentication
     if (fs.existsSync('.wwebjs_auth')) {
