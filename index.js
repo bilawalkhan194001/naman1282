@@ -139,8 +139,18 @@ async function checkForNewMessages() {
 }
 
 async function processMessage(message) {
-    if (message.type === 'e2e_notification') {
-        console.log('Ignoring e2e_notification message');
+    // Ignore various system notifications
+    const ignoredTypes = [
+        'e2e_notification',
+        'security_notification',
+        'call_log',
+        'protocol',
+        'gp2',
+        'notification_template'
+    ];
+
+    if (ignoredTypes.includes(message.type)) {
+        console.log(`Ignoring message of type: ${message.type}`);
         return;
     }
 

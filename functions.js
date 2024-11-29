@@ -72,23 +72,28 @@ function isIgnored(number) {
     return ignoreList.has(number);
 }
 
-async function sendMessageWithValidation(client, number, message, senderNumber) {
+async function sendMessageWithValidation(client, recipientNumber, message, senderNumber) {
     try {
-        const formattedNumber = `${number}@c.us`;
+        const formattedNumber = `${recipientNumber}@c.us`;
+        
+        // First, check if the number exists on WhatsApp
+        const isRegistered = await client.isRegisteredUser(formattedNumber);
+        if (!isRegistered) {
+            throw new Error('This number is not registered on WhatsApp');
+        }
 
-        // Attempt to send the message
+        // Send the response message
         await client.sendMessage(formattedNumber, message);
-        await client.sendMessage(`${senderNumber}@c.us`, `Message sent successfully to ${number}`);
+        
+        // Log the response
+        console.log(`Response sent to ${recipientNumber} by ${senderNumber}`);
+        
+        // Don't send an additional confirmation message since handleCommand 
+        // already returns a confirmation message
 
     } catch (error) {
-        console.error(`Failed to send message to ${number}: ${error.message}`);
-
-        // Send an error message back to the sender, but ensure it's a safe operation
-        try {
-            await client.sendMessage(`${senderNumber}@c.us`, `Failed to send message to ${number}: ${error.message}`);
-        } catch (secondaryError) {
-            console.error(`Failed to notify the sender about the failure: ${secondaryError.message}`);
-        }
+        console.error(`Failed to send message to ${recipientNumber}:`, error);
+        throw new Error(`Failed to send message: ${error.message}`);
     }
 }
 
@@ -147,9 +152,13 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
                         intent_confirmed: {
                             type: "boolean",
                             description: "Set to true ONLY if the user has clearly and explicitly expressed wanting to talk to a human representative (e.g., 'I want to talk to a human', 'connect me to customer service'). Set to false for general conversation."
+                        },
+                        user_query: {
+                            type: "string",
+                            description: "The user's original query or request"
                         }
                     },
-                    required: ["intent_confirmed"]
+                    required: ["intent_confirmed", "user_query"]
                 }
             }
         }];
@@ -171,21 +180,44 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
 
                 for (const toolCall of toolCalls) {
                     if (toolCall.function.name === 'handle_human_request') {
-                        const args = JSON.parse(toolCall.function.arguments);
-                        if (args.intent_confirmed) {
-                            const result = await handleHumanRequest(senderNumber, client);
+                        try {
+                            const args = JSON.parse(toolCall.function.arguments);
+                            if (args.intent_confirmed) {
+                                console.log(`Human request detected from ${senderNumber} with query: ${args.user_query}`);
+                                const result = await handleHumanRequest(senderNumber, client);
+                                toolOutputs.push({
+                                    tool_call_id: toolCall.id,
+                                    output: JSON.stringify({
+                                        status: "success",
+                                        message: result
+                                    })
+                                });
+                            } else {
+                                toolOutputs.push({
+                                    tool_call_id: toolCall.id,
+                                    output: JSON.stringify({
+                                        status: "skipped",
+                                        message: "Intent not confirmed as human request"
+                                    })
+                                });
+                            }
+                        } catch (error) {
+                            console.error(`Error processing tool call: ${error.message}`);
                             toolOutputs.push({
                                 tool_call_id: toolCall.id,
-                                output: result
+                                output: JSON.stringify({
+                                    status: "error",
+                                    message: "Failed to process human request"
+                                })
                             });
                         }
                     }
                 }
 
                 if (toolOutputs.length > 0) {
-                await assistant.beta.threads.runs.submitToolOutputs(threadId, run.id, {
-                    tool_outputs: toolOutputs
-                });
+                    await assistant.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+                        tool_outputs: toolOutputs
+                    });
                 }
             } else if (runStatus.status === 'failed') {
                 throw new Error('Run failed');
@@ -387,6 +419,33 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                             return "You don't have permission to use this command.";
                         }
 
+                    case '!!respond':
+                        if (!isAdmin && !isModerator) {
+                            return "You don't have permission to use this command.";
+                        }
+                        
+                        try {
+                            const quotedStrings = extractMultipleQuotedStrings(args.join(' '));
+                            if (quotedStrings.length !== 2) {
+                                return 'Please use the format: !!respond "recipient_number" "your message"';
+                            }
+
+                            const [recipientNumber, responseMessage] = quotedStrings;
+                            
+                            // Validate the phone number format
+                            if (!recipientNumber.match(/^\d+$/)) {
+                                return 'Invalid phone number format. Please provide only numbers without any special characters.';
+                            }
+
+                            // Send the response to the user
+                            await sendMessageWithValidation(client, recipientNumber, responseMessage, senderNumber);
+                            
+                            return `Response sent to ${recipientNumber}`;
+                        } catch (error) {
+                            console.error('Error in respond command:', error);
+                            return 'Failed to send response. Please check the number and try again.';
+                        }
+
                     default:
                         return "Unknown command. Please check the available commands using !!show-menu.";
                 }
@@ -460,6 +519,50 @@ function showMenu(isAdmin, isModerator) {
     }
 }
 
+// Add at the top with other constants
+const messageQueues = {};
+const processingStatus = {};
+
+// Add this new function to handle message queues
+async function queueMessage(client, assistantOrOpenAI, senderNumber, message) {
+    // Initialize queue if it doesn't exist
+    if (!messageQueues[senderNumber]) {
+        messageQueues[senderNumber] = [];
+    }
+
+    // Add message to queue
+    messageQueues[senderNumber].push(message);
+
+    // If not currently processing messages for this sender, start processing
+    if (!processingStatus[senderNumber]) {
+        await processMessageQueue(client, assistantOrOpenAI, senderNumber);
+    }
+}
+
+async function processMessageQueue(client, assistantOrOpenAI, senderNumber) {
+    if (processingStatus[senderNumber] || !messageQueues[senderNumber]?.length) {
+        return;
+    }
+
+    processingStatus[senderNumber] = true;
+
+    try {
+        while (messageQueues[senderNumber].length > 0) {
+            const message = messageQueues[senderNumber][0];
+            await processUserMessages(client, assistantOrOpenAI, senderNumber, message);
+            messageQueues[senderNumber].shift(); // Remove processed message
+            
+            // Add a small delay between processing messages
+            await sleep(1000);
+        }
+    } catch (error) {
+        console.error(`Error processing message queue for ${senderNumber}:`, error);
+    } finally {
+        processingStatus[senderNumber] = false;
+    }
+}
+
+// Update storeUserMessage to use the queue
 async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message) {
     if (senderNumber === client.info.wid.user) {
         return null;
@@ -478,7 +581,6 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
             const transcription = await transcribeAudio(assistantOrOpenAI, audioBuffer);
             messageToStore = `Transcribed voice message: ${transcription}`;
         } else if (message.type === 'document') {
-            // Handle documents gracefully
             return "As a vision model, I can only process images at the moment. Please send your document as an image if possible.";
         } else if (message.type === 'image') {
             const media = await message.downloadMedia();
@@ -502,10 +604,8 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
             messageToStore = message.body || `A message of type ${message.type} was received`;
         }
 
-        const response = await processUserMessages(client, assistantOrOpenAI, senderNumber, messageToStore);
-        if (response) {
-            await client.sendMessage(`${senderNumber}@c.us`, response);
-        }
+        // Queue the message instead of processing immediately
+        await queueMessage(client, assistantOrOpenAI, senderNumber, messageToStore);
         return null;
     } catch (error) {
         console.error(`Error processing message: ${error.message}`);
@@ -577,9 +677,12 @@ async function processUserMessages(client, assistantOrOpenAI, senderNumber, mess
             const audioBuffer = await generateAudioResponse(assistantOrOpenAI, response);
             const media = new MessageMedia('audio/ogg', audioBuffer.toString('base64'), 'response.ogg');
             await client.sendMessage(formattedSenderNumber, media, { sendAudioAsVoice: true });
+        } else {
+            // Reply directly to the message instead of sending a new one
+            await client.sendMessage(formattedSenderNumber, response);
         }
 
-        return response;
+        return null; // Return null since we've already sent the reply
 
     } catch (error) {
         if (error.message.includes('invalid wid')) {
@@ -587,8 +690,8 @@ async function processUserMessages(client, assistantOrOpenAI, senderNumber, mess
         } else {
             console.error(`Error processing messages for ${senderNumber}: ${error.message}`);
             const errorResponse = "Sorry, an error occurred while processing your messages.";
-            await client.sendMessage(`${senderNumber}@c.us`, errorResponse);
-            return errorResponse;
+            await client.sendMessage(formattedSenderNumber, errorResponse);
+            return null;
         }
     }
 }
@@ -622,23 +725,74 @@ async function generateAudioResponse(assistantOrOpenAI, text) {
 // Update the handleHumanRequest function
 async function handleHumanRequest(senderNumber, client) {
     try {
+        // Check if the sender number is valid
+        if (!senderNumber || typeof senderNumber !== 'string') {
+            throw new Error('Invalid sender number');
+        }
+
+        // Format timestamp
+        const timestamp = new Date().toLocaleString();
+        
         // Prepare the notification message for admin
-        const notificationMessage = `🔔 Human Representative Request:\nFrom: ${senderNumber}\nStatus: Awaiting response`;
+        const notificationMessage = `
+🔔 *Human Representative Request*
+---------------------------
+From: ${senderNumber}
+Time: ${timestamp}
+Status: Awaiting response
+---------------------------
+To respond, use: !!respond "${senderNumber}" "your message"`;
+        
+        // Track notification delivery
+        let notifiedAdmins = 0;
         
         // Send notification to all admin numbers
         for (const adminNumber of ADMIN_NUMBERS) {
             try {
                 await client.sendMessage(`${adminNumber}@c.us`, notificationMessage);
+                notifiedAdmins++;
+                console.log(`Notified admin ${adminNumber} about human request from ${senderNumber}`);
             } catch (error) {
                 console.error(`Failed to notify admin ${adminNumber}: ${error.message}`);
             }
         }
+
+        // Check if at least one admin was notified
+        if (notifiedAdmins === 0) {
+            console.error('Failed to notify any admins about human request');
+            return "I apologize, but I'm having trouble reaching our customer service team. Please try again in a few minutes.";
+        }
         
-        // Return a friendly message for the user
-        return "I understand you'd like to speak with a human representative. I've forwarded your request to our customer service team. They will contact you shortly. Thank you for your patience.";
+        return `I've forwarded your request to our customer service team. A human representative will contact you shortly. Your request has been logged at ${timestamp}. Thank you for your patience.`;
     } catch (error) {
         console.error('Error in handleHumanRequest:', error);
         return "I apologize, but I'm having trouble processing your request. Please try again later.";
+    }
+}
+
+// Add this function to validate and send messages
+async function sendMessageWithValidation(client, recipientNumber, message, senderNumber) {
+    try {
+        const formattedNumber = `${recipientNumber}@c.us`;
+        
+        // First, check if the number exists on WhatsApp
+        const isRegistered = await client.isRegisteredUser(formattedNumber);
+        if (!isRegistered) {
+            throw new Error('This number is not registered on WhatsApp');
+        }
+
+        // Send the response message
+        await client.sendMessage(formattedNumber, message);
+        
+        // Log the response
+        console.log(`Response sent to ${recipientNumber} by ${senderNumber}`);
+        
+        // Don't send an additional confirmation message since handleCommand 
+        // already returns a confirmation message
+
+    } catch (error) {
+        console.error(`Failed to send message to ${recipientNumber}:`, error);
+        throw new Error(`Failed to send message: ${error.message}`);
     }
 }
 
@@ -662,4 +816,7 @@ module.exports = {
     addToIgnoreList,
     removeFromIgnoreList,
     handleHumanRequest,
+    queueMessage,
+    processMessageQueue,
+    sendMessageWithValidation,
 };
