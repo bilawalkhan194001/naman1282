@@ -192,6 +192,21 @@ def set_bot_disconnected():
     return jsonify({'message': 'Bot disconnected status updated'})
 
 
+@app.route('/start_bot')
+@login_required
+def start_bot():
+    global bot_process, bot_connected
+    
+    # If bot is already running, return success
+    if bot_process is not None and bot_process.poll() is None:
+        return jsonify({"message": "Bot is already running", "connected": bot_connected})
+    
+    # Start the bot
+    bot_process = subprocess.Popen(['node', 'index.js'])
+    
+    return jsonify({"message": "Bot started successfully", "connected": False})
+
+
 if __name__ == '__main__':
     app.logger.info("Starting the Flask application...")
     app.run(debug=True, host='0.0.0.0', port=8080)

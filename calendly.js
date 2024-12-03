@@ -77,9 +77,19 @@ async function getInviteeDetails(eventUri) {
 }
 
 // Format event details for WhatsApp message
-function formatEventMessage(event, invitee) {
+function formatEventMessage(event, invitee, isPatient = false) {
     const startTime = new Date(event.start_time).toLocaleString();
     const endTime = new Date(event.end_time).toLocaleString();
+
+    if (isPatient) {
+        return `🗓️ *Your Appointment Confirmation*\n\n` +
+               `Thank you for scheduling an appointment!\n\n` +
+               `📝 *Event Type:* ${event.name || 'N/A'}\n` +
+               `🕒 *Start:* ${startTime}\n` +
+               `🕕 *End:* ${endTime}\n` +
+               `🔗 *Cancellation Link:* ${invitee.cancel_url || 'N/A'}\n\n` +
+               `Please arrive 10 minutes before your scheduled time. If you need to reschedule, please use the cancellation link above.`;
+    }
 
     return `🗓️ *New Appointment Scheduled!*\n\n` +
            `👤 *Invitee Name:* ${invitee.name || 'N/A'}\n` +
@@ -122,7 +132,10 @@ async function checkNewAppointments(client, adminNumbers) {
         for (const event of newEvents) {
             const eventDetails = await getEventDetails(event.uri);
             const inviteeDetails = await getInviteeDetails(event.uri);
-            const message = formatEventMessage(eventDetails, inviteeDetails);
+            
+            // Format different messages for admin and patient
+            const adminMessage = formatEventMessage(eventDetails, inviteeDetails, false);
+            const patientMessage = formatEventMessage(eventDetails, inviteeDetails, true);
 
             // Save appointment to dashboard
             const appointmentData = {
@@ -149,9 +162,29 @@ async function checkNewAppointments(client, adminNumbers) {
                 console.error('Error saving appointment to dashboard:', error);
             }
 
-            // Send WhatsApp messages
+            // Send WhatsApp messages to admins
             for (const adminNumber of adminNumbers) {
-                await client.sendMessage(`${adminNumber}@c.us`, message);
+                await client.sendMessage(`${adminNumber}@c.us`, adminMessage);
+            }
+
+            // Extract phone number from invitee's questions or custom fields
+            // This assumes the phone number is stored in a custom field or question
+            const phoneNumber = extractPhoneNumber(inviteeDetails);
+            if (phoneNumber) {
+                try {
+                    // Format and validate the phone number
+                    const formattedNumber = `${phoneNumber}@c.us`;
+                    const isRegistered = await client.isRegisteredUser(formattedNumber);
+                    
+                    if (isRegistered) {
+                        await client.sendMessage(formattedNumber, patientMessage);
+                        console.log(`Appointment confirmation sent to patient: ${phoneNumber}`);
+                    } else {
+                        console.log(`Patient number not registered on WhatsApp: ${phoneNumber}`);
+                    }
+                } catch (error) {
+                    console.error(`Error sending confirmation to patient: ${error.message}`);
+                }
             }
 
             processedEvents.push(event.uri);
@@ -162,6 +195,55 @@ async function checkNewAppointments(client, adminNumbers) {
     } catch (error) {
         console.error('Error checking for new appointments:', error);
         return 0;
+    }
+}
+
+// Helper function to extract phone number from invitee details
+function extractPhoneNumber(inviteeDetails) {
+    try {
+        // Check if there's a questions array in the invitee details
+        if (inviteeDetails.questions_and_answers) {
+            // Look for a question containing phone number
+            const phoneQuestion = inviteeDetails.questions_and_answers.find(q => 
+                q.question.toLowerCase().includes('phone') ||
+                q.question.toLowerCase().includes('mobile') ||
+                q.question.toLowerCase().includes('whatsapp')
+            );
+
+            if (phoneQuestion) {
+                // Clean up the phone number - remove spaces, dashes, etc.
+                let phone = phoneQuestion.answer.replace(/[\s\-\(\)]/g, '');
+                
+                // Remove leading '+' if present
+                if (phone.startsWith('+')) {
+                    phone = phone.substring(1);
+                }
+                
+                return phone;
+            }
+        }
+
+        // If no phone number found in questions, check custom fields
+        if (inviteeDetails.custom_fields) {
+            const phoneField = inviteeDetails.custom_fields.find(f => 
+                f.name.toLowerCase().includes('phone') ||
+                f.name.toLowerCase().includes('mobile') ||
+                f.name.toLowerCase().includes('whatsapp')
+            );
+
+            if (phoneField) {
+                let phone = phoneField.value.replace(/[\s\-\(\)]/g, '');
+                if (phone.startsWith('+')) {
+                    phone = phone.substring(1);
+                }
+                return phone;
+            }
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error extracting phone number:', error);
+        return null;
     }
 }
 

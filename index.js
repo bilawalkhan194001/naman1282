@@ -47,7 +47,9 @@ if (!fs.existsSync(picsFolder)) {
 // Add this flag at the top with other variables
 let isResetMode = false;
 
-// Add this after client initialization
+// Add this with other global variables at the top
+let isInitialized = false;
+let isCheckingMessages = false;
 let calendlyCheckInterval;
 
 function stopBot() {
@@ -91,14 +93,19 @@ client.on('ready', async () => {
     functions.loadIgnoreList();
     
     // Start Calendly check interval
-    calendlyCheckInterval = setInterval(async () => {
-        const newAppointments = await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
-        if (newAppointments > 0) {
-            console.log(`Found ${newAppointments} new appointment(s)`);
-        }
-    }, 60000); // Check every minute
+    if (!calendlyCheckInterval) {
+        calendlyCheckInterval = setInterval(async () => {
+            const newAppointments = await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
+            if (newAppointments > 0) {
+                console.log(`Found ${newAppointments} new appointment(s)`);
+            }
+        }, 60000); // Check every minute
+    }
 
-    setInterval(checkForNewMessages, 1000);
+    if (!isCheckingMessages) {
+        setInterval(checkForNewMessages, 1000);
+        isCheckingMessages = true;
+    }
 
     // Notify the server that the bot is connected
     fetch('http://localhost:8080/set_bot_connected', {
@@ -219,4 +226,7 @@ client.on('disconnected', (reason) => {
     });
 });
 
-client.initialize();
+if (!isInitialized) {
+    client.initialize();
+    isInitialized = true;
+}

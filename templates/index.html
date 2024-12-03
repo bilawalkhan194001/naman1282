@@ -299,6 +299,7 @@
         </div>
 
         <div class="controls fade-in">
+            <button onclick="startBot()" class="button start">Start Bot</button>
             <button onclick="resetBot()" class="button reset">Reset Bot</button>
         </div>
 
@@ -513,6 +514,18 @@
             loadAppointments();
             setInterval(loadAppointments, 60000);
         });
+
+        function startBot() {
+            fetch('/start_bot')
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data.message);
+                    updateStatus(false);
+                    qrCodeFound = false;
+                    startQRCheck();
+                })
+                .catch(error => console.error('Error:', error));
+        }
     </script>
 </body>
 </html>
