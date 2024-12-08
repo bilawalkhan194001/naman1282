@@ -4,6 +4,8 @@ const fs = require('fs');
 const CALENDLY_API_KEY = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzMyODI3MzM0LCJqdGkiOiI3NTZjNjA1YS00OGQzLTQzYjQtODBlMy0zYjM3MTQ1NWU2ODciLCJ1c2VyX3V1aWQiOiJmMmJhNzY3YS05Mzc5LTQ2NjItYjYyMy04NDdhMmQyMDVkMzcifQ.yW4JgxuQPYhUhDBpQhBJWD3TaEM0nfW6FNv9pRzZg7CYO70Y2r2kaBpIa34AhqOfTIlE5t35UvcYRJtHzg09Lw';
 const BASE_URL = 'https://api.calendly.com';
 const PROCESSED_EVENTS_FILE = 'processed_events.json';
+const REMINDER_FILE = 'appointment_reminders.json';
+const REMINDER_HOURS = 24; // Hours before appointment to send reminder
 
 // Helper function to load processed events
 function loadProcessedEvents() {
@@ -100,6 +102,88 @@ function formatEventMessage(event, invitee, isPatient = false) {
            `🔗 *Cancellation Link:* ${invitee.cancel_url || 'N/A'}`;
 }
 
+// Helper function to load reminders
+function loadReminders() {
+    try {
+        if (fs.existsSync(REMINDER_FILE)) {
+            return JSON.parse(fs.readFileSync(REMINDER_FILE, 'utf8'));
+        }
+        return [];
+    } catch (error) {
+        console.error('Error loading reminders:', error);
+        return [];
+    }
+}
+
+function saveReminders(reminders) {
+    try {
+        fs.writeFileSync(REMINDER_FILE, JSON.stringify(reminders, null, 2));
+    } catch (error) {
+        console.error('Error saving reminders:', error);
+    }
+}
+
+// Function to format reminder message
+function formatReminderMessage(event, invitee) {
+    const startTime = new Date(event.start_time).toLocaleString();
+    return `🔔 *Appointment Reminder*\n\n` +
+           `This is a reminder of your upcoming appointment:\n\n` +
+           `📝 *Event Type:* ${event.name || 'N/A'}\n` +
+           `🕒 *Time:* ${startTime}\n` +
+           `📍 *Location:* ${event.location || 'To be confirmed'}\n\n` +
+           `If you need to reschedule, please use this link:\n` +
+           `${invitee.cancel_url || 'N/A'}\n\n` +
+           `Please arrive 10 minutes before your scheduled time.`;
+}
+
+// Function to check and send reminders
+async function checkAndSendReminders(client) {
+    try {
+        const reminders = loadReminders();
+        const now = new Date();
+        const remindersToSend = reminders.filter(reminder => {
+            const appointmentTime = new Date(reminder.start_time);
+            const timeDiff = appointmentTime - now;
+            const hoursDiff = timeDiff / (1000 * 60 * 60);
+            
+            // Check if it's time to send reminder (between 24 and 23 hours before)
+            return hoursDiff <= REMINDER_HOURS && hoursDiff > (REMINDER_HOURS - 1) && !reminder.reminderSent;
+        });
+
+        for (const reminder of remindersToSend) {
+            try {
+                const formattedPhoneNumber = formatMexicanNumber(reminder.phoneNumber);
+                const formattedNumber = `${formattedPhoneNumber}@c.us`;
+                const reminderMessage = formatReminderMessage(reminder.event, reminder.invitee);
+                
+                const isRegistered = await client.isRegisteredUser(formattedNumber);
+                if (isRegistered) {
+                    await client.sendMessage(formattedNumber, reminderMessage);
+                    console.log(`📅 Reminder sent to: ${formattedPhoneNumber} for appointment on ${reminder.start_time}`);
+                    
+                    // Mark reminder as sent
+                    reminder.reminderSent = true;
+                }
+            } catch (error) {
+                console.error(`Error sending reminder to ${reminder.phoneNumber}:`, error);
+            }
+        }
+
+        // Save updated reminders
+        saveReminders(reminders);
+
+        // Clean up old reminders
+        const activeReminders = reminders.filter(reminder => {
+            const appointmentTime = new Date(reminder.start_time);
+            return appointmentTime > now;
+        });
+        saveReminders(activeReminders);
+
+    } catch (error) {
+        console.error('Error checking reminders:', error);
+    }
+}
+
 // Main function to check for new appointments
 async function checkNewAppointments(client, adminNumbers) {
     try {
@@ -144,22 +228,29 @@ async function checkNewAppointments(client, adminNumbers) {
                 start_time: eventDetails.start_time,
                 end_time: eventDetails.end_time,
                 event_type: eventDetails.name,
-                status: eventDetails.status,
+                status: eventDetails.status || 'active',
                 cancel_url: inviteeDetails.cancel_url,
                 created_at: new Date().toISOString()
             };
 
             // Send to dashboard API
             try {
-                await fetch('http://localhost:8080/save_appointment', {
+                const response = await fetch('http://localhost:8080/save_appointment', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify(appointmentData)
                 });
+                
+                const result = await response.json();
+                if (result.success) {
+                    console.log('✅ Appointment saved to dashboard successfully');
+                } else {
+                    console.error('❌ Failed to save appointment to dashboard:', result.error);
+                }
             } catch (error) {
-                console.error('Error saving appointment to dashboard:', error);
+                console.error('❌ Error saving appointment to dashboard:', error);
             }
 
             // Send WhatsApp messages to admins
@@ -180,6 +271,18 @@ async function checkNewAppointments(client, adminNumbers) {
                     if (isRegistered) {
                         await client.sendMessage(formattedNumber, patientMessage);
                         console.log(`Appointment confirmation sent to patient: ${formattedPhoneNumber}`);
+
+                        // Add reminder to the schedule
+                        const reminders = loadReminders();
+                        reminders.push({
+                            phoneNumber: formattedPhoneNumber,
+                            event: eventDetails,
+                            invitee: inviteeDetails,
+                            start_time: eventDetails.start_time,
+                            reminderSent: false
+                        });
+                        saveReminders(reminders);
+                        console.log(`Reminder scheduled for: ${formattedPhoneNumber}`);
                     } else {
                         console.log(`Patient number not registered on WhatsApp: ${formattedPhoneNumber}`);
                     }
@@ -190,6 +293,9 @@ async function checkNewAppointments(client, adminNumbers) {
 
             processedEvents.push(event.uri);
         }
+
+        // Check for reminders that need to be sent
+        await checkAndSendReminders(client);
 
         saveProcessedEvents(processedEvents);
         return newEvents.length;
@@ -256,5 +362,6 @@ function formatMexicanNumber(number) {
 }
 
 module.exports = {
-    checkNewAppointments
+    checkNewAppointments,
+    checkAndSendReminders
 }; 

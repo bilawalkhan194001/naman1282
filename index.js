@@ -99,7 +99,7 @@ client.on('ready', async () => {
             if (newAppointments > 0) {
                 console.log(`Found ${newAppointments} new appointment(s)`);
             }
-        }, 60000); // Check every minute
+        }, 5 * 60 * 1000); // Check every 5 minutes (300000 ms)
     }
 
     if (!isCheckingMessages) {
@@ -119,6 +119,11 @@ client.on('ready', async () => {
         console.log(data.message);
     })
     .catch(error => console.error('Error updating bot status:', error));
+
+    // Set up periodic reminder checks (every hour)
+    setInterval(async () => {
+        await calendly.checkAndSendReminders(client);
+    }, 60000); // Check every minute
 });
 
 async function checkForNewMessages() {

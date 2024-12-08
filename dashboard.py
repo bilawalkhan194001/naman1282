@@ -29,16 +29,25 @@ def load_appointments():
     return []
 
 def save_appointment(appointment):
-    appointments = load_appointments()
-    appointments.append(appointment)
-    with open(APPOINTMENTS_FILE, 'w') as f:
-        json.dump(appointments, f)
+    try:
+        appointments = load_appointments()
+        appointments.append(appointment)
+        with open(APPOINTMENTS_FILE, 'w') as f:
+            json.dump(appointments, f, indent=2)
+        print(f"✅ Appointment saved successfully: {appointment.get('invitee_name')} - {appointment.get('start_time')}")
+    except Exception as e:
+        print(f"❌ Error saving appointment: {str(e)}")
 
 @app.route('/save_appointment', methods=['POST'])
 def save_new_appointment():
-    data = request.json
-    save_appointment(data)
-    return jsonify({"success": True})
+    try:
+        data = request.json
+        print(f"📅 Received new appointment data: {data}")
+        save_appointment(data)
+        return jsonify({"success": True, "message": "Appointment saved successfully"})
+    except Exception as e:
+        print(f"❌ Error in save_new_appointment: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 def login_required(f):
@@ -205,6 +214,103 @@ def start_bot():
     bot_process = subprocess.Popen(['node', 'index.js'])
     
     return jsonify({"message": "Bot started successfully", "connected": False})
+
+
+@app.route('/debug/appointments', methods=['GET'])
+@login_required
+def debug_appointments():
+    try:
+        appointments = load_appointments()
+        return jsonify({
+            "total_appointments": len(appointments),
+            "appointments": appointments,
+            "file_exists": os.path.exists(APPOINTMENTS_FILE),
+            "file_size": os.path.getsize(APPOINTMENTS_FILE) if os.path.exists(APPOINTMENTS_FILE) else 0
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/delete_appointment/<int:index>', methods=['DELETE'])
+@login_required
+def delete_appointment(index):
+    try:
+        appointments = load_appointments()
+        if 0 <= index < len(appointments):
+            deleted_appointment = appointments.pop(index)
+            with open(APPOINTMENTS_FILE, 'w') as f:
+                json.dump(appointments, f, indent=2)
+            return jsonify({
+                "success": True, 
+                "message": f"Appointment for {deleted_appointment.get('invitee_name')} deleted successfully"
+            })
+        return jsonify({"success": False, "error": "Appointment not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/download_appointment/<int:index>')
+@login_required
+def download_appointment(index):
+    try:
+        appointments = load_appointments()
+        if 0 <= index < len(appointments):
+            appointment = appointments[index]
+            filename = f"appointment_{appointment['invitee_name']}_{appointment['start_time'].split('T')[0]}.json"
+            # Create a temporary file
+            temp_path = os.path.join(os.path.dirname(APPOINTMENTS_FILE), filename)
+            with open(temp_path, 'w') as f:
+                json.dump(appointment, f, indent=2)
+            
+            # Send file and then delete it
+            response = send_file(
+                temp_path,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/json'
+            )
+            
+            # Delete temp file after sending
+            @response.call_on_close
+            def cleanup():
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+            return response
+        return jsonify({"error": "Appointment not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/download_all_appointments')
+@login_required
+def download_all_appointments():
+    try:
+        appointments = load_appointments()
+        if not appointments:
+            return jsonify({"error": "No appointments found"}), 404
+            
+        filename = f"all_appointments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        temp_path = os.path.join(os.path.dirname(APPOINTMENTS_FILE), filename)
+        
+        with open(temp_path, 'w') as f:
+            json.dump(appointments, f, indent=2)
+        
+        response = send_file(
+            temp_path,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/json'
+        )
+        
+        @response.call_on_close
+        def cleanup():
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
