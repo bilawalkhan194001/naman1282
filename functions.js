@@ -192,7 +192,7 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
                             const args = JSON.parse(toolCall.function.arguments);
                             if (args.intent_confirmed) {
                                 console.log(`Human request detected from ${senderNumber} with query: ${args.user_query}`);
-                                const result = await handleHumanRequest(senderNumber, client, ADMIN_NUMBERS);
+                                const result = await handleHumanRequest(senderNumber, client, global.ADMIN_NUMBERS);
                                 toolOutputs.push({
                                     tool_call_id: toolCall.id,
                                     output: JSON.stringify({
@@ -738,9 +738,20 @@ async function generateAudioResponse(assistantOrOpenAI, text) {
 // Modify the handleHumanRequest function signature
 async function handleHumanRequest(senderNumber, client, adminNumbers) {
     try {
-        // Check if the sender number is valid
+        // Validate inputs
         if (!senderNumber || typeof senderNumber !== 'string') {
+            console.error('Invalid sender number:', senderNumber);
             throw new Error('Invalid sender number');
+        }
+
+        if (!client) {
+            console.error('WhatsApp client not provided');
+            throw new Error('WhatsApp client not provided');
+        }
+
+        if (!adminNumbers || !Array.isArray(adminNumbers) || adminNumbers.length === 0) {
+            console.error('No admin numbers available');
+            throw new Error('No admin numbers configured');
         }
 
         // Format timestamp
@@ -758,28 +769,37 @@ To respond, use: !!respond "${senderNumber}" "your message"`;
         
         // Track notification delivery
         let notifiedAdmins = 0;
+        let failedNotifications = [];
         
         // Send notification to all admin numbers
         for (const adminNumber of adminNumbers) {
             try {
-                await client.sendMessage(`${adminNumber}@c.us`, notificationMessage);
+                const formattedAdminNumber = `${adminNumber}@c.us`;
+                await client.sendMessage(formattedAdminNumber, notificationMessage);
                 notifiedAdmins++;
-                console.log(`Notified admin ${adminNumber} about human request from ${senderNumber}`);
+                console.log(`✅ Notified admin ${adminNumber} about human request from ${senderNumber}`);
             } catch (error) {
-                console.error(`Failed to notify admin ${adminNumber}: ${error.message}`);
+                failedNotifications.push(adminNumber);
+                console.error(`❌ Failed to notify admin ${adminNumber}: ${error.message}`);
             }
         }
+
+        // Log the results
+        console.log(`Human request notification summary:
+        - Total admins: ${adminNumbers.length}
+        - Successfully notified: ${notifiedAdmins}
+        - Failed notifications: ${failedNotifications.length}`);
 
         // Check if at least one admin was notified
         if (notifiedAdmins === 0) {
             console.error('Failed to notify any admins about human request');
-            return "I apologize, but I'm having trouble reaching our customer service team. Please try again in a few minutes.";
+            throw new Error('Failed to reach customer service team');
         }
         
         return `I've forwarded your request to our customer service team. A human representative will contact you shortly. Your request has been logged at ${timestamp}. Thank you for your patience.`;
     } catch (error) {
         console.error('Error in handleHumanRequest:', error);
-        return "I apologize, but I'm having trouble processing your request. Please try again later.";
+        return "I apologize, but I'm having trouble reaching our customer service team. Please try again in a few minutes.";
     }
 }
 
