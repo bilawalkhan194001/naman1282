@@ -71,27 +71,36 @@ function isIgnored(number) {
     return ignoreList.has(number);
 }
 
+// Add this helper function at the top of the file with other utility functions
+function formatMexicanNumber(number) {
+    // Check if it's a Mexican number (starts with 52) but missing the 1
+    if (number.startsWith('52') && number.length === 12 && !number.startsWith('521')) {
+        return `521${number.slice(2)}`;
+    }
+    return number;
+}
+
 async function sendMessageWithValidation(client, recipientNumber, message, senderNumber) {
     try {
-        const formattedNumber = `${recipientNumber}@c.us`;
+        // Format Mexican numbers correctly
+        const formattedRecipient = formatMexicanNumber(recipientNumber);
+        const formattedNumber = `${formattedRecipient}@c.us`;
         
-        // First, check if the number exists on WhatsApp
+        // Add logging for manual response
+        console.log('\x1b[35m%s\x1b[0m', `👤 Manual response from ${senderNumber} to ${formattedRecipient}`);
+        console.log(`Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+
         const isRegistered = await client.isRegisteredUser(formattedNumber);
         if (!isRegistered) {
             throw new Error('This number is not registered on WhatsApp');
         }
 
-        // Send the response message
         await client.sendMessage(formattedNumber, message);
         
-        // Log the response
-        console.log(`Response sent to ${recipientNumber} by ${senderNumber}`);
-        
-        // Don't send an additional confirmation message since handleCommand 
-        // already returns a confirmation message
+        console.log('\x1b[32m%s\x1b[0m', `✅ Message delivered to ${formattedRecipient}`);
 
     } catch (error) {
-        console.error(`Failed to send message to ${recipientNumber}:`, error);
+        console.error('\x1b[31m%s\x1b[0m', `❌ Failed to send message to ${recipientNumber}: ${error.message}`);
         throw new Error(`Failed to send message: ${error.message}`);
     }
 }
@@ -656,40 +665,45 @@ async function processImageOrDocument(assistantOrOpenAI, media, text) {
 }
 
 async function processUserMessages(client, assistantOrOpenAI, senderNumber, message) {
-    // Ignore messages from "status"
     if (senderNumber === 'status' || !senderNumber) return null;
 
     const isVoiceMessage = message.startsWith('Transcribed voice message:');
 
     try {
-        // Use the default assistantKey directly without subject logic
+        console.log('\x1b[32m%s\x1b[0m', `📥 Incoming message from: ${senderNumber}`);
+        console.log(`Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+
         const response = await generateResponseOpenAI(assistantOrOpenAI, senderNumber, message, assistantKey, client);
 
-        // Validate senderNumber format
-        const formattedSenderNumber = `${senderNumber}@c.us`;
+        // Format Mexican numbers correctly
+        const formattedSender = formatMexicanNumber(senderNumber);
+        const formattedSenderNumber = `${formattedSender}@c.us`;
+        
         if (!formattedSenderNumber.match(/^\d+@c\.us$/)) {
             throw new Error(`Invalid sender number format: ${formattedSenderNumber}`);
         }
 
-        // Generate and send audio response only for voice messages
+        console.log('\x1b[34m%s\x1b[0m', `📤 Outgoing message to: ${formattedSender}`);
+        console.log(`Response: ${response.substring(0, 100)}${response.length > 100 ? '...' : ''}`);
+
         if (isVoiceMessage) {
             const audioBuffer = await generateAudioResponse(assistantOrOpenAI, response);
             const media = new MessageMedia('audio/ogg', audioBuffer.toString('base64'), 'response.ogg');
             await client.sendMessage(formattedSenderNumber, media, { sendAudioAsVoice: true });
         } else {
-            // Reply directly to the message instead of sending a new one
             await client.sendMessage(formattedSenderNumber, response);
         }
 
-        return null; // Return null since we've already sent the reply
+        return null;
 
     } catch (error) {
+        console.error('\x1b[31m%s\x1b[0m', `❌ Error with ${senderNumber}: ${error.message}`);
         if (error.message.includes('invalid wid')) {
             console.warn(`Invalid WID error for ${senderNumber}: ${error.message}`);
         } else {
-            console.error(`Error processing messages for ${senderNumber}: ${error.message}`);
             const errorResponse = "Sorry, an error occurred while processing your messages.";
-            await client.sendMessage(formattedSenderNumber, errorResponse);
+            const formattedSender = formatMexicanNumber(senderNumber);
+            await client.sendMessage(`${formattedSender}@c.us`, errorResponse);
             return null;
         }
     }
@@ -766,32 +780,6 @@ To respond, use: !!respond "${senderNumber}" "your message"`;
     } catch (error) {
         console.error('Error in handleHumanRequest:', error);
         return "I apologize, but I'm having trouble processing your request. Please try again later.";
-    }
-}
-
-// Add this function to validate and send messages
-async function sendMessageWithValidation(client, recipientNumber, message, senderNumber) {
-    try {
-        const formattedNumber = `${recipientNumber}@c.us`;
-        
-        // First, check if the number exists on WhatsApp
-        const isRegistered = await client.isRegisteredUser(formattedNumber);
-        if (!isRegistered) {
-            throw new Error('This number is not registered on WhatsApp');
-        }
-
-        // Send the response message
-        await client.sendMessage(formattedNumber, message);
-        
-        // Log the response
-        console.log(`Response sent to ${recipientNumber} by ${senderNumber}`);
-        
-        // Don't send an additional confirmation message since handleCommand 
-        // already returns a confirmation message
-
-    } catch (error) {
-        console.error(`Failed to send message to ${recipientNumber}:`, error);
-        throw new Error(`Failed to send message: ${error.message}`);
     }
 }
 

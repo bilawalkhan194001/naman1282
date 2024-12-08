@@ -172,15 +172,16 @@ async function checkNewAppointments(client, adminNumbers) {
             const phoneNumber = extractPhoneNumber(inviteeDetails);
             if (phoneNumber) {
                 try {
-                    // Format and validate the phone number
-                    const formattedNumber = `${phoneNumber}@c.us`;
+                    // Format the phone number for Mexican numbers
+                    const formattedPhoneNumber = formatMexicanNumber(phoneNumber);
+                    const formattedNumber = `${formattedPhoneNumber}@c.us`;
                     const isRegistered = await client.isRegisteredUser(formattedNumber);
                     
                     if (isRegistered) {
                         await client.sendMessage(formattedNumber, patientMessage);
-                        console.log(`Appointment confirmation sent to patient: ${phoneNumber}`);
+                        console.log(`Appointment confirmation sent to patient: ${formattedPhoneNumber}`);
                     } else {
-                        console.log(`Patient number not registered on WhatsApp: ${phoneNumber}`);
+                        console.log(`Patient number not registered on WhatsApp: ${formattedPhoneNumber}`);
                     }
                 } catch (error) {
                     console.error(`Error sending confirmation to patient: ${error.message}`);
@@ -245,6 +246,13 @@ function extractPhoneNumber(inviteeDetails) {
         console.error('Error extracting phone number:', error);
         return null;
     }
+}
+
+function formatMexicanNumber(number) {
+    if (number.startsWith('52') && number.length === 12 && !number.startsWith('521')) {
+        return `521${number.slice(2)}`;
+    }
+    return number;
 }
 
 module.exports = {
