@@ -14,3 +14,25 @@ Thumbs.db
 
 # whatapp-web.js
 .wwebjs_*
+.wwebjs_auth
+
+# Logs
+logs/
+*.log
+
+# Build output
+dist/
+build/
+out/
+
+# Coverage reports
+coverage/
+
+# Temporary files
+tmp/
+temp/
+
+# Debug files
+.debug/
+
+

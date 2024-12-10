@@ -9,7 +9,7 @@ const fetch = require('node-fetch');
 const calendly = require('./calendly');
 
 const ADMIN_NUMBERS = ['923499490427'];
-global.ADMIN_NUMBERS = ADMIN_NUMBERS; // Make it globally accessible
+global.ADMIN_NUMBERS = ADMIN_NUMBERS;
 
 const assistant = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -23,50 +23,32 @@ const client = new Client({
     }
 });
 
-console.log(ADMIN_NUMBERS); // Example usage
-let isBotActive = true; // Control the bot's active state
-
-// Add these variables to store the last messages
+let isBotActive = true;
 let lastBotMessage = '';
 let lastHumanMessage = '';
-
-// Get the bot's own number after client is ready
 let botNumber = '';
-
-// Add this variable to store the timestamp of the last processed message
 let lastProcessedMessageTime = 0;
-
-// Add this Set to keep track of processed message IDs
 const processedMessageIds = new Set();
 
-// Add near the start of the file, after the requires
 const picsFolder = path.join(__dirname, 'pics');
 if (!fs.existsSync(picsFolder)) {
-    console.log('Creating pics folder...');
     fs.mkdirSync(picsFolder);
 }
 
-// Add this flag at the top with other variables
 let isResetMode = false;
-
-// Add this with other global variables at the top
 let isInitialized = false;
 let isCheckingMessages = false;
 let calendlyCheckInterval;
 
 function stopBot() {
     isBotActive = false;
-    console.log('Bot has been paused.');
 }
 
 function startBot() {
     isBotActive = true;
-    console.log('Bot is now active.');
 }
 
-// Update the qr event handler to be simple like the demo
 client.on('qr', (qr) => {
-    console.log('QR Code received, generating image...');
     qrcode.toFile('qr_code.png', qr, {
         color: {
             dark: '#000000',
@@ -75,33 +57,23 @@ client.on('qr', (qr) => {
     }, (err) => {
         if (err) {
             console.error('Error generating QR code:', err);
-        } else {
-            console.log('QR code image generated successfully');
         }
     });
 });
 
-// Update the ready event to be simple like the demo
 client.on('ready', async () => {
-    console.log('Client is ready!');
     botNumber = client.info.wid.user;
-    console.log(`Bot number: ${botNumber}`);
 
     if (!ADMIN_NUMBERS.includes(botNumber)) {
         ADMIN_NUMBERS.push(botNumber);
-        console.log(`Bot number ${botNumber} added to admin list.`);
     }
 
     functions.loadIgnoreList();
     
-    // Start Calendly check interval
     if (!calendlyCheckInterval) {
         calendlyCheckInterval = setInterval(async () => {
             const newAppointments = await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
-            if (newAppointments > 0) {
-                console.log(`Found ${newAppointments} new appointment(s)`);
-            }
-        }, 5 * 60 * 1000); // Check every 5 minutes (300000 ms)
+        }, 60 * 1000);
     }
 
     if (!isCheckingMessages) {
@@ -109,7 +81,6 @@ client.on('ready', async () => {
         isCheckingMessages = true;
     }
 
-    // Notify the server that the bot is connected
     fetch('http://localhost:8080/set_bot_connected', {
         method: 'POST',
         headers: {
@@ -117,15 +88,11 @@ client.on('ready', async () => {
         },
     })
     .then(response => response.json())
-    .then(data => {
-        console.log(data.message);
-    })
     .catch(error => console.error('Error updating bot status:', error));
 
-    // Set up periodic reminder checks (every hour)
     setInterval(async () => {
         await calendly.checkAndSendReminders(client);
-    }, 60000); // Check every minute
+    }, 60000);
 });
 
 async function checkForNewMessages() {
@@ -136,13 +103,9 @@ async function checkForNewMessages() {
         if (messages.length > 0) {
             const latestMessage = messages[0];
 
-            // Only process messages from the bot's number
             if (latestMessage.from === `${botNumber}@c.us`) {
-                // Check if this message is newer than the last processed message and hasn't been processed yet
                 if (latestMessage.timestamp > lastProcessedMessageTime && !processedMessageIds.has(latestMessage.id._serialized)) {
                     lastProcessedMessageTime = latestMessage.timestamp;
-
-                    // Process the message
                     await processMessage(latestMessage);
                 }
             }
@@ -153,7 +116,6 @@ async function checkForNewMessages() {
 }
 
 async function processMessage(message) {
-    // Ignore various system notifications
     const ignoredTypes = [
         'e2e_notification',
         'security_notification',
@@ -164,7 +126,6 @@ async function processMessage(message) {
     ];
 
     if (ignoredTypes.includes(message.type)) {
-        console.log(`Ignoring message of type: ${message.type}`);
         return;
     }
 
@@ -192,8 +153,6 @@ async function processMessage(message) {
         if (response) {
             await client.sendMessage(senderId, response);
         }
-    } else if (isBot) {
-        // No action needed for bot's own message
     }
 }
 
@@ -206,14 +165,10 @@ client.on('error', (error) => {
 });
 
 client.on('disconnected', (reason) => {
-    console.log('Client was disconnected:', reason);
-    
-    // Clear Calendly check interval
     if (calendlyCheckInterval) {
         clearInterval(calendlyCheckInterval);
     }
     
-    // Clear any existing authentication
     if (fs.existsSync('.wwebjs_auth')) {
         try {
             fs.rmSync('.wwebjs_auth', { recursive: true, force: true });
@@ -222,7 +177,6 @@ client.on('disconnected', (reason) => {
         }
     }
     
-    // Notify the dashboard that the bot is disconnected
     fetch('http://localhost:8080/set_bot_disconnected', {
         method: 'POST',
         headers: {

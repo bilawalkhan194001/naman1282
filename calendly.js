@@ -5,9 +5,8 @@ const CALENDLY_API_KEY = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYT
 const BASE_URL = 'https://api.calendly.com';
 const PROCESSED_EVENTS_FILE = 'processed_events.json';
 const REMINDER_FILE = 'appointment_reminders.json';
-const REMINDER_HOURS = 24; // Hours before appointment to send reminder
+const REMINDER_HOURS = 24;
 
-// Helper function to load processed events
 function loadProcessedEvents() {
     try {
         if (fs.existsSync(PROCESSED_EVENTS_FILE)) {
@@ -20,7 +19,6 @@ function loadProcessedEvents() {
     }
 }
 
-// Helper function to save processed events
 function saveProcessedEvents(events) {
     try {
         fs.writeFileSync(PROCESSED_EVENTS_FILE, JSON.stringify(events, null, 2));
@@ -29,7 +27,6 @@ function saveProcessedEvents(events) {
     }
 }
 
-// Get current user information
 async function getCurrentUser() {
     try {
         const response = await axios.get(`${BASE_URL}/users/me`, {
@@ -45,7 +42,6 @@ async function getCurrentUser() {
     }
 }
 
-// Get event details
 async function getEventDetails(eventUri) {
     try {
         const response = await axios.get(eventUri, {
@@ -54,14 +50,18 @@ async function getEventDetails(eventUri) {
                 'Content-Type': 'application/json'
             }
         });
-        return response.data.resource;
+        const event = response.data.resource;
+        const eventTimezone = event.event_memberships?.[0]?.user?.timezone || 'UTC';
+        return {
+            ...event,
+            timezone: eventTimezone
+        };
     } catch (error) {
         console.error('Failed to fetch event details:', error.message);
         return {};
     }
 }
 
-// Get invitee details
 async function getInviteeDetails(eventUri) {
     try {
         const response = await axios.get(`${eventUri}/invitees`, {
@@ -71,38 +71,69 @@ async function getInviteeDetails(eventUri) {
             }
         });
         const invitees = response.data.collection;
-        return invitees.length > 0 ? invitees[0] : {};
+        if (invitees.length === 0) return {};
+        const invitee = invitees[0];
+        let phoneNumber = null;
+        let message = null;
+        if (invitee.questions_and_answers) {
+            for (const qa of invitee.questions_and_answers) {
+                if (qa.question.toLowerCase().includes('phone') || 
+                    qa.question.toLowerCase().includes('whatsapp') ||
+                    qa.question.toLowerCase().includes('número')) {
+                    phoneNumber = qa.answer.replace(/\D/g, '');
+                }
+                if (qa.question.toLowerCase().includes('message') || 
+                    qa.question.toLowerCase().includes('mensaje') ||
+                    qa.question.toLowerCase().includes('notes')) {
+                    message = qa.answer;
+                }
+            }
+        }
+        return {
+            ...invitee,
+            phoneNumber,
+            message
+        };
     } catch (error) {
         console.error('Failed to fetch invitee details:', error.message);
         return {};
     }
 }
 
-// Format event details for WhatsApp message
 function formatEventMessage(event, invitee, isPatient = false) {
-    const startTime = new Date(event.start_time).toLocaleString();
-    const endTime = new Date(event.end_time).toLocaleString();
+    const startTime = new Date(event.start_time).toLocaleString('en-US', { timeZone: event.timezone });
+    const endTime = new Date(event.end_time).toLocaleString('en-US', { timeZone: event.timezone });
 
     if (isPatient) {
-        return `🗓️ *Your Appointment Confirmation*\n\n` +
+        let message = `🗓️ *Your Appointment Confirmation*\n\n` +
                `Thank you for scheduling an appointment!\n\n` +
                `📝 *Event Type:* ${event.name || 'N/A'}\n` +
-               `🕒 *Start:* ${startTime}\n` +
-               `🕕 *End:* ${endTime}\n` +
-               `🔗 *Cancellation Link:* ${invitee.cancel_url || 'N/A'}\n\n` +
-               `Please arrive 10 minutes before your scheduled time. If you need to reschedule, please use the cancellation link above.`;
+               `🕒 *Start:* ${startTime} (${event.timezone})\n` +
+               `🕕 *End:* ${endTime} (${event.timezone})\n` +
+               `🔗 *Cancellation Link:* ${invitee.cancel_url || 'N/A'}\n\n`;
+
+        if (invitee.message) {
+            message += `📝 *Your Message:* ${invitee.message}\n\n`;
+        }
+        message += `Please arrive 10 minutes before your scheduled time. If you need to reschedule, please use the cancellation link above.`;
+        return message;
     }
 
-    return `🗓️ *New Appointment Scheduled!*\n\n` +
+    let message = `🗓️ *New Appointment Scheduled!*\n\n` +
            `👤 *Invitee Name:* ${invitee.name || 'N/A'}\n` +
            `📧 *Email:* ${invitee.email || 'N/A'}\n` +
-           `🕒 *Start:* ${startTime}\n` +
-           `🕕 *End:* ${endTime}\n` +
+           `📱 *Phone:* ${invitee.phoneNumber || 'N/A'}\n` +
+           `🕒 *Start:* ${startTime} (${event.timezone})\n` +
+           `🕕 *End:* ${endTime} (${event.timezone})\n` +
            `📝 *Event Type:* ${event.name || 'N/A'}\n` +
            `🔗 *Cancellation Link:* ${invitee.cancel_url || 'N/A'}`;
+
+    if (invitee.message) {
+        message += `\n\n💬 *Client Message:* ${invitee.message}`;
+    }
+    return message;
 }
 
-// Helper function to load reminders
 function loadReminders() {
     try {
         if (fs.existsSync(REMINDER_FILE)) {
@@ -123,7 +154,6 @@ function saveReminders(reminders) {
     }
 }
 
-// Function to format reminder message
 function formatReminderMessage(event, invitee) {
     const startTime = new Date(event.start_time).toLocaleString();
     return `🔔 *Appointment Reminder*\n\n` +
@@ -136,7 +166,6 @@ function formatReminderMessage(event, invitee) {
            `Please arrive 10 minutes before your scheduled time.`;
 }
 
-// Function to check and send reminders
 async function checkAndSendReminders(client) {
     try {
         const reminders = loadReminders();
@@ -145,9 +174,13 @@ async function checkAndSendReminders(client) {
             const appointmentTime = new Date(reminder.start_time);
             const timeDiff = appointmentTime - now;
             const hoursDiff = timeDiff / (1000 * 60 * 60);
-            
-            // Check if it's time to send reminder (between 24 and 23 hours before)
-            return hoursDiff <= REMINDER_HOURS && hoursDiff > (REMINDER_HOURS - 1) && !reminder.reminderSent;
+            const bookingTime = new Date(reminder.created_at);
+            const timeFromBooking = appointmentTime - bookingTime;
+            const hoursFromBooking = timeFromBooking / (1000 * 60 * 60);
+            return hoursDiff <= REMINDER_HOURS && 
+                   hoursDiff > (REMINDER_HOURS - 1) && 
+                   !reminder.reminderSent &&
+                   hoursFromBooking > 24;
         });
 
         for (const reminder of remindersToSend) {
@@ -155,13 +188,9 @@ async function checkAndSendReminders(client) {
                 const formattedPhoneNumber = formatMexicanNumber(reminder.phoneNumber);
                 const formattedNumber = `${formattedPhoneNumber}@c.us`;
                 const reminderMessage = formatReminderMessage(reminder.event, reminder.invitee);
-                
                 const isRegistered = await client.isRegisteredUser(formattedNumber);
                 if (isRegistered) {
                     await client.sendMessage(formattedNumber, reminderMessage);
-                    console.log(`📅 Reminder sent to: ${formattedPhoneNumber} for appointment on ${reminder.start_time}`);
-                    
-                    // Mark reminder as sent
                     reminder.reminderSent = true;
                 }
             } catch (error) {
@@ -169,32 +198,27 @@ async function checkAndSendReminders(client) {
             }
         }
 
-        // Save updated reminders
         saveReminders(reminders);
-
-        // Clean up old reminders
         const activeReminders = reminders.filter(reminder => {
             const appointmentTime = new Date(reminder.start_time);
             return appointmentTime > now;
         });
         saveReminders(activeReminders);
-
     } catch (error) {
         console.error('Error checking reminders:', error);
     }
 }
 
-// Main function to check for new appointments
 async function checkNewAppointments(client, adminNumbers) {
     try {
         const userUri = await getCurrentUser();
         if (!userUri) {
             console.error('Unable to fetch user information');
-            return;
+            return 0;
         }
 
         const now = new Date();
-        const endTime = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days from now
+        const endTime = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
 
         const response = await axios.get(`${BASE_URL}/scheduled_events`, {
             headers: {
@@ -216,12 +240,9 @@ async function checkNewAppointments(client, adminNumbers) {
         for (const event of newEvents) {
             const eventDetails = await getEventDetails(event.uri);
             const inviteeDetails = await getInviteeDetails(event.uri);
-            
-            // Format different messages for admin and patient
             const adminMessage = formatEventMessage(eventDetails, inviteeDetails, false);
             const patientMessage = formatEventMessage(eventDetails, inviteeDetails, true);
 
-            // Save appointment to dashboard
             const appointmentData = {
                 invitee_name: inviteeDetails.name,
                 invitee_email: inviteeDetails.email,
@@ -233,7 +254,6 @@ async function checkNewAppointments(client, adminNumbers) {
                 created_at: new Date().toISOString()
             };
 
-            // Send to dashboard API
             try {
                 const response = await fetch('http://localhost:8080/save_appointment', {
                     method: 'POST',
@@ -244,35 +264,26 @@ async function checkNewAppointments(client, adminNumbers) {
                 });
                 
                 const result = await response.json();
-                if (result.success) {
-                    console.log('✅ Appointment saved to dashboard successfully');
-                } else {
-                    console.error('❌ Failed to save appointment to dashboard:', result.error);
+                if (!result.success) {
+                    console.error('Failed to save appointment to dashboard:', result.error);
                 }
             } catch (error) {
-                console.error('❌ Error saving appointment to dashboard:', error);
+                console.error('Error saving appointment to dashboard:', error);
             }
 
-            // Send WhatsApp messages to admins
             for (const adminNumber of adminNumbers) {
                 await client.sendMessage(`${adminNumber}@c.us`, adminMessage);
             }
 
-            // Extract phone number from invitee's questions or custom fields
-            // This assumes the phone number is stored in a custom field or question
             const phoneNumber = extractPhoneNumber(inviteeDetails);
             if (phoneNumber) {
                 try {
-                    // Format the phone number for Mexican numbers
                     const formattedPhoneNumber = formatMexicanNumber(phoneNumber);
                     const formattedNumber = `${formattedPhoneNumber}@c.us`;
                     const isRegistered = await client.isRegisteredUser(formattedNumber);
                     
                     if (isRegistered) {
                         await client.sendMessage(formattedNumber, patientMessage);
-                        console.log(`Appointment confirmation sent to patient: ${formattedPhoneNumber}`);
-
-                        // Add reminder to the schedule
                         const reminders = loadReminders();
                         reminders.push({
                             phoneNumber: formattedPhoneNumber,
@@ -282,9 +293,6 @@ async function checkNewAppointments(client, adminNumbers) {
                             reminderSent: false
                         });
                         saveReminders(reminders);
-                        console.log(`Reminder scheduled for: ${formattedPhoneNumber}`);
-                    } else {
-                        console.log(`Patient number not registered on WhatsApp: ${formattedPhoneNumber}`);
                     }
                 } catch (error) {
                     console.error(`Error sending confirmation to patient: ${error.message}`);
@@ -294,9 +302,7 @@ async function checkNewAppointments(client, adminNumbers) {
             processedEvents.push(event.uri);
         }
 
-        // Check for reminders that need to be sent
         await checkAndSendReminders(client);
-
         saveProcessedEvents(processedEvents);
         return newEvents.length;
     } catch (error) {
@@ -305,12 +311,9 @@ async function checkNewAppointments(client, adminNumbers) {
     }
 }
 
-// Helper function to extract phone number from invitee details
 function extractPhoneNumber(inviteeDetails) {
     try {
-        // Check if there's a questions array in the invitee details
         if (inviteeDetails.questions_and_answers) {
-            // Look for a question containing phone number
             const phoneQuestion = inviteeDetails.questions_and_answers.find(q => 
                 q.question.toLowerCase().includes('phone') ||
                 q.question.toLowerCase().includes('mobile') ||
@@ -318,19 +321,14 @@ function extractPhoneNumber(inviteeDetails) {
             );
 
             if (phoneQuestion) {
-                // Clean up the phone number - remove spaces, dashes, etc.
                 let phone = phoneQuestion.answer.replace(/[\s\-\(\)]/g, '');
-                
-                // Remove leading '+' if present
                 if (phone.startsWith('+')) {
                     phone = phone.substring(1);
                 }
-                
                 return phone;
             }
         }
 
-        // If no phone number found in questions, check custom fields
         if (inviteeDetails.custom_fields) {
             const phoneField = inviteeDetails.custom_fields.find(f => 
                 f.name.toLowerCase().includes('phone') ||

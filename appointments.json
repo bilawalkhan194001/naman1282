@@ -8,5 +8,15 @@
     "status": "active",
     "cancel_url": "https://calendly.com/cancellations/6e11d25d-2b3c-40d6-8bf6-00c7f0aaee5d",
     "created_at": "2024-12-08T17:24:08.222Z"
+  },
+  {
+    "invitee_name": "Shahbaz Qasim",
+    "invitee_email": "shzalpha1@gmail.com",
+    "start_time": "2024-12-13T05:30:00.000000Z",
+    "end_time": "2024-12-13T06:00:00.000000Z",
+    "event_type": "30 Minute Meeting",
+    "status": "active",
+    "cancel_url": "https://calendly.com/cancellations/59cdadd2-b97e-4a47-98bc-16fd6af44d99",
+    "created_at": "2024-12-09T12:42:29.629Z"
   }
 ]

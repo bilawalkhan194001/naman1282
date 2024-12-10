@@ -1,1 +1,81 @@
-[]
+[
+  {
+    "phoneNumber": "923499490427",
+    "event": {
+      "calendar_event": null,
+      "created_at": "2024-12-09T12:38:44.988765Z",
+      "end_time": "2024-12-13T06:00:00.000000Z",
+      "event_guests": [],
+      "event_memberships": [
+        {
+          "buffered_end_time": "2024-12-13T06:00:00.000000Z",
+          "buffered_start_time": "2024-12-13T05:30:00.000000Z",
+          "user": "https://api.calendly.com/users/f2ba767a-9379-4662-b623-847a2d205d37",
+          "user_email": "helium.zenon@gmail.com",
+          "user_name": "Shahbaz"
+        }
+      ],
+      "event_type": "https://api.calendly.com/event_types/da1d9c0c-b300-4940-8b74-275dd6741907",
+      "invitees_counter": {
+        "active": 1,
+        "limit": 1,
+        "total": 1
+      },
+      "location": {
+        "location": null,
+        "type": "custom"
+      },
+      "meeting_notes_html": null,
+      "meeting_notes_plain": null,
+      "name": "30 Minute Meeting",
+      "start_time": "2024-12-13T05:30:00.000000Z",
+      "status": "active",
+      "updated_at": "2024-12-09T12:38:44.988765Z",
+      "uri": "https://api.calendly.com/scheduled_events/76acd60b-202e-42d2-85ba-cccdac50f13d",
+      "timezone": "UTC"
+    },
+    "invitee": {
+      "cancel_url": "https://calendly.com/cancellations/59cdadd2-b97e-4a47-98bc-16fd6af44d99",
+      "created_at": "2024-12-09T12:38:45.004858Z",
+      "email": "shzalpha1@gmail.com",
+      "event": "https://api.calendly.com/scheduled_events/76acd60b-202e-42d2-85ba-cccdac50f13d",
+      "first_name": null,
+      "invitee_scheduled_by": "https://api.calendly.com/users/f2ba767a-9379-4662-b623-847a2d205d37",
+      "last_name": null,
+      "name": "Shahbaz Qasim",
+      "new_invitee": null,
+      "no_show": null,
+      "old_invitee": null,
+      "payment": null,
+      "questions_and_answers": [
+        {
+          "answer": "+92 349 9490427",
+          "position": 0,
+          "question": "Please provide your Whatsapp Number. "
+        }
+      ],
+      "reconfirmation": null,
+      "reschedule_url": "https://calendly.com/reschedulings/59cdadd2-b97e-4a47-98bc-16fd6af44d99",
+      "rescheduled": false,
+      "routing_form_submission": null,
+      "scheduling_method": null,
+      "status": "active",
+      "text_reminder_number": null,
+      "timezone": "Asia/Karachi",
+      "tracking": {
+        "utm_campaign": null,
+        "utm_source": null,
+        "utm_medium": null,
+        "utm_content": null,
+        "utm_term": null,
+        "salesforce_uuid": null
+      },
+      "updated_at": "2024-12-09T12:38:45.004858Z",
+      "uri": "https://api.calendly.com/scheduled_events/76acd60b-202e-42d2-85ba-cccdac50f13d/invitees/59cdadd2-b97e-4a47-98bc-16fd6af44d99",
+      "phoneNumber": "923499490427",
+      "message": null
+    },
+    "start_time": "2024-12-13T05:30:00.000000Z",
+    "reminderSent": false
+  }
+]

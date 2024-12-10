@@ -1,6 +1,6 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
-const moderators = new Set(); // Add any default moderator numbers here
+const moderators = new Set();
 let assistantKey = 'asst_SF6F0GRIRkUQq8OUZ3h17JZp';
 const userThreads = {};
 const userMessages = {};
@@ -15,16 +15,12 @@ const path = require('path');
 const userMessageQueues = {};
 const userProcessingTimers = {};
 
-// Add these constants at the top of the file
 const IGNORE_LIST_FILE = path.join(__dirname, 'ignore_list.json');
 const ignoreList = new Set();
-
-// Add these functions to handle saving and loading the ignore list
 
 function saveIgnoreList() {
     const ignoreArray = Array.from(ignoreList);
     fs.writeFileSync(IGNORE_LIST_FILE, JSON.stringify(ignoreArray, null, 2), 'utf8');
-    console.log('Ignore list saved successfully.');
 }
 
 function loadIgnoreList() {
@@ -32,48 +28,39 @@ function loadIgnoreList() {
         if (fs.existsSync(IGNORE_LIST_FILE)) {
             const data = fs.readFileSync(IGNORE_LIST_FILE, 'utf8');
             if (data.trim() === '') {
-                console.log('Ignore list file is empty. Initializing with an empty array.');
                 ignoreList.clear();
                 saveIgnoreList();
             } else {
                 const ignoreArray = JSON.parse(data);
                 ignoreList.clear();
                 ignoreArray.forEach(number => ignoreList.add(number));
-                console.log('Ignore list loaded successfully:', Array.from(ignoreList));
             }
         } else {
-            console.log('No ignore list file found. Creating a new one with an empty array.');
             ignoreList.clear();
             saveIgnoreList();
         }
     } catch (error) {
         console.error('Error loading ignore list:', error);
-        console.log('Initializing ignore list with an empty array.');
         ignoreList.clear();
         saveIgnoreList();
     }
 }
 
-// Modify the addToIgnoreList function
 function addToIgnoreList(number) {
     ignoreList.add(number);
     saveIgnoreList();
 }
 
-// Modify the removeFromIgnoreList function
 function removeFromIgnoreList(number) {
     ignoreList.delete(number);
     saveIgnoreList();
 }
 
-// Modify the isIgnored function
 function isIgnored(number) {
     return ignoreList.has(number);
 }
 
-// Add this helper function at the top of the file with other utility functions
 function formatMexicanNumber(number) {
-    // Check if it's a Mexican number (starts with 52) but missing the 1
     if (number.startsWith('52') && number.length === 12 && !number.startsWith('521')) {
         return `521${number.slice(2)}`;
     }
@@ -82,13 +69,8 @@ function formatMexicanNumber(number) {
 
 async function sendMessageWithValidation(client, recipientNumber, message, senderNumber) {
     try {
-        // Format Mexican numbers correctly
         const formattedRecipient = formatMexicanNumber(recipientNumber);
         const formattedNumber = `${formattedRecipient}@c.us`;
-        
-        // Add logging for manual response
-        console.log('\x1b[35m%s\x1b[0m', `👤 Manual response from ${senderNumber} to ${formattedRecipient}`);
-        console.log(`Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
 
         const isRegistered = await client.isRegisteredUser(formattedNumber);
         if (!isRegistered) {
@@ -96,8 +78,6 @@ async function sendMessageWithValidation(client, recipientNumber, message, sende
         }
 
         await client.sendMessage(formattedNumber, message);
-        
-        console.log('\x1b[32m%s\x1b[0m', `✅ Message delivered to ${formattedRecipient}`);
 
     } catch (error) {
         console.error('\x1b[31m%s\x1b[0m', `❌ Failed to send message to ${recipientNumber}: ${error.message}`);
@@ -148,7 +128,6 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
             content: userMessage
         });
 
-        // Define the function that the assistant can call
         const tools = [{
             type: "function",
             function: {
@@ -176,7 +155,6 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
             tools: tools
         });
 
-        // Poll for completion or required actions
         while (true) {
             const runStatus = await assistant.beta.threads.runs.retrieve(threadId, run.id);
 
@@ -191,7 +169,6 @@ async function generateResponseOpenAI(assistant, senderNumber, userMessage, assi
                         try {
                             const args = JSON.parse(toolCall.function.arguments);
                             if (args.intent_confirmed) {
-                                console.log(`Human request detected from ${senderNumber} with query: ${args.user_query}`);
                                 const result = await handleHumanRequest(senderNumber, client, global.ADMIN_NUMBERS);
                                 toolOutputs.push({
                                     tool_call_id: toolCall.id,
@@ -379,11 +356,11 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
 
                     case '!!show-menu':
                         if (isAdmin) {
-                            return showMenu(true, false); // Admin menu
+                            return showMenu(true, false);
                         } else if (isModerator) {
-                            return showMenu(false, true); // Moderator menu
+                            return showMenu(false, true);
                         } else {
-                            return showMenu(false, false); // User menu
+                            return showMenu(false, false);
                         }
 
                     case '!!pause':
@@ -422,7 +399,7 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                             }
                             const recipientNumber = chat.id.user;
                             removeFromIgnoreList(recipientNumber);
-                            return getTemplateMessage(recipientNumber); // Send the template message after enabling AI assistance
+                            return getTemplateMessage(recipientNumber);
                         } else {
                             return "You don't have permission to use this command.";
                         }
@@ -440,12 +417,10 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
 
                             const [recipientNumber, responseMessage] = quotedStrings;
                             
-                            // Validate the phone number format
                             if (!recipientNumber.match(/^\d+$/)) {
                                 return 'Invalid phone number format. Please provide only numbers without any special characters.';
                             }
 
-                            // Send the response to the user
                             await sendMessageWithValidation(client, recipientNumber, responseMessage, senderNumber);
                             
                             return `Response sent to ${recipientNumber}`;
@@ -527,21 +502,16 @@ function showMenu(isAdmin, isModerator) {
     }
 }
 
-// Add at the top with other constants
 const messageQueues = {};
 const processingStatus = {};
 
-// Add this new function to handle message queues
 async function queueMessage(client, assistantOrOpenAI, senderNumber, message) {
-    // Initialize queue if it doesn't exist
     if (!messageQueues[senderNumber]) {
         messageQueues[senderNumber] = [];
     }
 
-    // Add message to queue
     messageQueues[senderNumber].push(message);
 
-    // If not currently processing messages for this sender, start processing
     if (!processingStatus[senderNumber]) {
         await processMessageQueue(client, assistantOrOpenAI, senderNumber);
     }
@@ -558,9 +528,8 @@ async function processMessageQueue(client, assistantOrOpenAI, senderNumber) {
         while (messageQueues[senderNumber].length > 0) {
             const message = messageQueues[senderNumber][0];
             await processUserMessages(client, assistantOrOpenAI, senderNumber, message);
-            messageQueues[senderNumber].shift(); // Remove processed message
+            messageQueues[senderNumber].shift();
             
-            // Add a small delay between processing messages
             await sleep(1000);
         }
     } catch (error) {
@@ -570,7 +539,6 @@ async function processMessageQueue(client, assistantOrOpenAI, senderNumber) {
     }
 }
 
-// Update storeUserMessage to use the queue
 async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message) {
     if (senderNumber === client.info.wid.user) {
         return null;
@@ -593,13 +561,11 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
         } else if (message.type === 'image') {
             const media = await message.downloadMedia();
             
-            // Check file size (10MB limit for example)
             const fileSizeInMB = Buffer.from(media.data, 'base64').length / (1024 * 1024);
             if (fileSizeInMB > 10) {
                 return "The image is too large to process. Please send an image smaller than 10MB.";
             }
 
-            // Check supported image types
             const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
             if (!supportedTypes.includes(media.mimetype)) {
@@ -612,7 +578,6 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
             messageToStore = message.body || `A message of type ${message.type} was received`;
         }
 
-        // Queue the message instead of processing immediately
         await queueMessage(client, assistantOrOpenAI, senderNumber, messageToStore);
         return null;
     } catch (error) {
@@ -623,7 +588,6 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
 
 async function processImageOrDocument(assistantOrOpenAI, media, text) {
     try {
-        // Only process images
         if (!media.mimetype.startsWith('image/')) {
             return "I can only analyze images at the moment.";
         }
@@ -631,14 +595,11 @@ async function processImageOrDocument(assistantOrOpenAI, media, text) {
         const base64Data = media.data;
         const defaultPrompt = "What's in this image?";
 
-        // Prepare the messages array with content
         const messages = [
             {
                 role: "user",
                 content: [
-                    // Include text if provided, otherwise use default prompt
                     { type: "text", text: text || defaultPrompt },
-                    // Include the image
                     {
                         type: "image_url",
                         image_url: {
@@ -649,7 +610,6 @@ async function processImageOrDocument(assistantOrOpenAI, media, text) {
             }
         ];
 
-        // Make the API request using the current GPT-4 Vision model
         const response = await assistantOrOpenAI.chat.completions.create({
             model: "gpt-4o",
             messages: messages,
@@ -670,21 +630,14 @@ async function processUserMessages(client, assistantOrOpenAI, senderNumber, mess
     const isVoiceMessage = message.startsWith('Transcribed voice message:');
 
     try {
-        console.log('\x1b[32m%s\x1b[0m', `📥 Incoming message from: ${senderNumber}`);
-        console.log(`Message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
-
         const response = await generateResponseOpenAI(assistantOrOpenAI, senderNumber, message, assistantKey, client);
 
-        // Format Mexican numbers correctly
         const formattedSender = formatMexicanNumber(senderNumber);
         const formattedSenderNumber = `${formattedSender}@c.us`;
         
         if (!formattedSenderNumber.match(/^\d+@c\.us$/)) {
             throw new Error(`Invalid sender number format: ${formattedSenderNumber}`);
         }
-
-        console.log('\x1b[34m%s\x1b[0m', `📤 Outgoing message to: ${formattedSender}`);
-        console.log(`Response: ${response.substring(0, 100)}${response.length > 100 ? '...' : ''}`);
 
         if (isVoiceMessage) {
             const audioBuffer = await generateAudioResponse(assistantOrOpenAI, response);
@@ -735,10 +688,8 @@ async function generateAudioResponse(assistantOrOpenAI, text) {
     return buffer;
 }
 
-// Modify the handleHumanRequest function signature
 async function handleHumanRequest(senderNumber, client, adminNumbers) {
     try {
-        // Validate inputs
         if (!senderNumber || typeof senderNumber !== 'string') {
             console.error('Invalid sender number:', senderNumber);
             throw new Error('Invalid sender number');
@@ -754,10 +705,8 @@ async function handleHumanRequest(senderNumber, client, adminNumbers) {
             throw new Error('No admin numbers configured');
         }
 
-        // Format timestamp
         const timestamp = new Date().toLocaleString();
         
-        // Prepare the notification message for admin
         const notificationMessage = `
 🔔 *Human Representative Request*
 ---------------------------
@@ -767,30 +716,20 @@ Status: Awaiting response
 ---------------------------
 To respond, use: !!respond "${senderNumber}" "your message"`;
         
-        // Track notification delivery
         let notifiedAdmins = 0;
         let failedNotifications = [];
         
-        // Send notification to all admin numbers
         for (const adminNumber of adminNumbers) {
             try {
                 const formattedAdminNumber = `${adminNumber}@c.us`;
                 await client.sendMessage(formattedAdminNumber, notificationMessage);
                 notifiedAdmins++;
-                console.log(`✅ Notified admin ${adminNumber} about human request from ${senderNumber}`);
             } catch (error) {
                 failedNotifications.push(adminNumber);
                 console.error(`❌ Failed to notify admin ${adminNumber}: ${error.message}`);
             }
         }
 
-        // Log the results
-        console.log(`Human request notification summary:
-        - Total admins: ${adminNumbers.length}
-        - Successfully notified: ${notifiedAdmins}
-        - Failed notifications: ${failedNotifications.length}`);
-
-        // Check if at least one admin was notified
         if (notifiedAdmins === 0) {
             console.error('Failed to notify any admins about human request');
             throw new Error('Failed to reach customer service team');
