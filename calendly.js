@@ -1,7 +1,8 @@
 const axios = require('axios');
 const fs = require('fs');
 
-const CALENDLY_API_KEY = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzMyODI3MzM0LCJqdGkiOiI3NTZjNjA1YS00OGQzLTQzYjQtODBlMy0zYjM3MTQ1NWU2ODciLCJ1c2VyX3V1aWQiOiJmMmJhNzY3YS05Mzc5LTQ2NjItYjYyMy04NDdhMmQyMDVkMzcifQ.yW4JgxuQPYhUhDBpQhBJWD3TaEM0nfW6FNv9pRzZg7CYO70Y2r2kaBpIa34AhqOfTIlE5t35UvcYRJtHzg09Lw';
+const CALENDLY_API_KEY = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzMyODk4NDc1LCJqdGkiOiI1OTYzNzU5Ni0wYWNjLTQ4MDAtYWM2ZS0xYjhiYzhmOWU0ZDciLCJ1c2VyX3V1aWQiOiIzZWY0MGJlMC1hYjUzLTRhMjctYTI0Mi1kN2QyZDA4NWNiNzgifQ.q-QvC1IqsTcT7gADbRoakXL7C4mEvGgpv6hC74evJbFCqEN7mgir9qmqEFJ9IviE2ABRN1lYcVX_tyqfVkEOMQ';
+
 const BASE_URL = 'https://api.calendly.com';
 const PROCESSED_EVENTS_FILE = 'processed_events.json';
 const REMINDER_FILE = 'appointment_reminders.json';
@@ -51,14 +52,33 @@ async function getEventDetails(eventUri) {
             }
         });
         const event = response.data.resource;
-        const eventTimezone = event.event_memberships?.[0]?.user?.timezone || 'UTC';
+        
+        // Get timezone from the event type's scheduling preferences
+        const eventTimezone = event.event_type?.scheduling_preferences?.timezone || 
+                            event.event_type?.timezone || 
+                            event.event_memberships?.[0]?.user?.timezone || 
+                            'America/Mexico_City'; // Default to Mexico City timezone if none specified
+        
+        console.log('Event Timezone:', eventTimezone);
+        console.log('Event Details:', {
+            name: event.name,
+            start_time: event.start_time,
+            end_time: event.end_time,
+            timezone: eventTimezone
+        });
+
         return {
             ...event,
             timezone: eventTimezone
         };
     } catch (error) {
-        console.error('Failed to fetch event details:', error.message);
-        return {};
+        console.error('Failed to fetch event details:', error);
+        return {
+            timezone: 'America/Mexico_City', // Fallback to Mexico City time
+            start_time: null,
+            end_time: null,
+            name: 'N/A'
+        };
     }
 }
 
@@ -101,8 +121,41 @@ async function getInviteeDetails(eventUri) {
 }
 
 function formatEventMessage(event, invitee, isPatient = false) {
-    const startTime = new Date(event.start_time).toLocaleString('en-US', { timeZone: event.timezone });
-    const endTime = new Date(event.end_time).toLocaleString('en-US', { timeZone: event.timezone });
+    // Configure date formatting options with timezone
+    const dateOptions = {
+        timeZone: event.timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        timeZoneName: 'short' // This will add the timezone abbreviation
+    };
+
+    // Add safety checks for date conversion
+    let startTime, endTime;
+    try {
+        const startDate = new Date(event.start_time);
+        const endDate = new Date(event.end_time);
+        
+        startTime = startDate.toLocaleString('en-US', dateOptions);
+        endTime = endDate.toLocaleString('en-US', dateOptions);
+        
+        // Log the conversion for debugging
+        console.log('Time Conversion:', {
+            original_start: event.start_time,
+            original_end: event.end_time,
+            converted_start: startTime,
+            converted_end: endTime,
+            timezone: event.timezone
+        });
+    } catch (error) {
+        console.error('Error formatting dates:', error);
+        startTime = 'Time conversion error';
+        endTime = 'Time conversion error';
+    }
 
     if (isPatient) {
         let message = `🗓️ *Your Appointment Confirmation*\n\n` +
@@ -155,11 +208,23 @@ function saveReminders(reminders) {
 }
 
 function formatReminderMessage(event, invitee) {
-    const startTime = new Date(event.start_time).toLocaleString();
+    const dateOptions = {
+        timeZone: event.timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    };
+
+    const startTime = new Date(event.start_time).toLocaleString('en-US', dateOptions);
+    
     return `🔔 *Appointment Reminder*\n\n` +
            `This is a reminder of your upcoming appointment:\n\n` +
            `📝 *Event Type:* ${event.name || 'N/A'}\n` +
-           `🕒 *Time:* ${startTime}\n` +
+           `🕒 *Time:* ${startTime} (${event.timezone})\n` +
            `📍 *Location:* ${event.location || 'To be confirmed'}\n\n` +
            `If you need to reschedule, please use this link:\n` +
            `${invitee.cancel_url || 'N/A'}\n\n` +
@@ -229,7 +294,8 @@ async function checkNewAppointments(client, adminNumbers) {
                 min_start_time: now.toISOString(),
                 max_start_time: endTime.toISOString(),
                 status: 'active',
-                user: userUri
+                user: userUri,
+                timezone: 'America/Mexico_City' // Specify Mexico City timezone
             }
         });
 
@@ -241,68 +307,38 @@ async function checkNewAppointments(client, adminNumbers) {
             const eventDetails = await getEventDetails(event.uri);
             const inviteeDetails = await getInviteeDetails(event.uri);
             const adminMessage = formatEventMessage(eventDetails, inviteeDetails, false);
-            const patientMessage = formatEventMessage(eventDetails, inviteeDetails, true);
-
-            const appointmentData = {
-                invitee_name: inviteeDetails.name,
-                invitee_email: inviteeDetails.email,
-                start_time: eventDetails.start_time,
-                end_time: eventDetails.end_time,
-                event_type: eventDetails.name,
-                status: eventDetails.status || 'active',
-                cancel_url: inviteeDetails.cancel_url,
-                created_at: new Date().toISOString()
-            };
-
-            try {
-                const response = await fetch('http://localhost:8080/save_appointment', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(appointmentData)
-                });
-                
-                const result = await response.json();
-                if (!result.success) {
-                    console.error('Failed to save appointment to dashboard:', result.error);
-                }
-            } catch (error) {
-                console.error('Error saving appointment to dashboard:', error);
-            }
 
             for (const adminNumber of adminNumbers) {
-                await client.sendMessage(`${adminNumber}@c.us`, adminMessage);
+                try {
+                    const formattedAdminNumber = `${adminNumber}@c.us`;
+                    await client.sendMessage(formattedAdminNumber, adminMessage);
+                } catch (error) {
+                    console.error(`Error sending admin message to ${adminNumber}:`, error);
+                }
             }
 
-            const phoneNumber = extractPhoneNumber(inviteeDetails);
-            if (phoneNumber) {
+            if (inviteeDetails.phoneNumber) {
                 try {
-                    const formattedPhoneNumber = formatMexicanNumber(phoneNumber);
-                    const formattedNumber = `${formattedPhoneNumber}@c.us`;
-                    const isRegistered = await client.isRegisteredUser(formattedNumber);
-                    
-                    if (isRegistered) {
-                        await client.sendMessage(formattedNumber, patientMessage);
-                        const reminders = loadReminders();
-                        reminders.push({
-                            phoneNumber: formattedPhoneNumber,
-                            event: eventDetails,
-                            invitee: inviteeDetails,
-                            start_time: eventDetails.start_time,
-                            reminderSent: false
-                        });
-                        saveReminders(reminders);
-                    }
+                    const formattedPhoneNumber = formatMexicanNumber(inviteeDetails.phoneNumber);
+                    const reminders = loadReminders();
+                    reminders.push({
+                        phoneNumber: formattedPhoneNumber,
+                        event: eventDetails,
+                        invitee: inviteeDetails,
+                        start_time: eventDetails.start_time,
+                        reminderSent: false,
+                        created_at: new Date().toISOString()
+                    });
+                    saveReminders(reminders);
+                    console.log(`Added reminder for ${formattedPhoneNumber}`);
                 } catch (error) {
-                    console.error(`Error sending confirmation to patient: ${error.message}`);
+                    console.error('Error adding reminder:', error);
                 }
             }
 
             processedEvents.push(event.uri);
         }
 
-        await checkAndSendReminders(client);
         saveProcessedEvents(processedEvents);
         return newEvents.length;
     } catch (error) {
