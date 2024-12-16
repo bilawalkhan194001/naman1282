@@ -295,7 +295,7 @@ async function checkNewAppointments(client, adminNumbers) {
                 max_start_time: endTime.toISOString(),
                 status: 'active',
                 user: userUri,
-                timezone: 'America/Mexico_City' // Specify Mexico City timezone
+                timezone: 'America/Mexico_City'
             }
         });
 
@@ -303,39 +303,69 @@ async function checkNewAppointments(client, adminNumbers) {
         const events = response.data.collection;
         const newEvents = events.filter(event => !processedEvents.includes(event.uri));
 
+        // Save new appointments to appointments.json
         for (const event of newEvents) {
-            const eventDetails = await getEventDetails(event.uri);
-            const inviteeDetails = await getInviteeDetails(event.uri);
-            const adminMessage = formatEventMessage(eventDetails, inviteeDetails, false);
+            try {
+                const eventDetails = await getEventDetails(event.uri);
+                const inviteeDetails = await getInviteeDetails(event.uri);
+                
+                // Create appointment object
+                const appointment = {
+                    invitee_name: inviteeDetails.name,
+                    invitee_email: inviteeDetails.email,
+                    start_time: eventDetails.start_time,
+                    end_time: eventDetails.end_time,
+                    event_type: eventDetails.name,
+                    status: 'active',
+                    cancel_url: inviteeDetails.cancel_url,
+                    created_at: new Date().toISOString()
+                };
 
-            for (const adminNumber of adminNumbers) {
+                // Save appointment using dashboard API
                 try {
-                    const formattedAdminNumber = `${adminNumber}@c.us`;
-                    await client.sendMessage(formattedAdminNumber, adminMessage);
-                } catch (error) {
-                    console.error(`Error sending admin message to ${adminNumber}:`, error);
-                }
-            }
-
-            if (inviteeDetails.phoneNumber) {
-                try {
-                    const formattedPhoneNumber = formatMexicanNumber(inviteeDetails.phoneNumber);
-                    const reminders = loadReminders();
-                    reminders.push({
-                        phoneNumber: formattedPhoneNumber,
-                        event: eventDetails,
-                        invitee: inviteeDetails,
-                        start_time: eventDetails.start_time,
-                        reminderSent: false,
-                        created_at: new Date().toISOString()
+                    await axios.post('http://localhost:8080/save_appointment', appointment, {
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
                     });
-                    saveReminders(reminders);
-                    console.log(`Added reminder for ${formattedPhoneNumber}`);
-                } catch (error) {
-                    console.error('Error adding reminder:', error);
+                    console.log('Appointment saved successfully:', appointment.invitee_name);
+                } catch (saveError) {
+                    console.error('Error saving appointment:', saveError);
                 }
-            }
 
+                // Send notifications
+                const adminMessage = formatEventMessage(eventDetails, inviteeDetails, false);
+                for (const adminNumber of adminNumbers) {
+                    try {
+                        const formattedAdminNumber = `${adminNumber}@c.us`;
+                        await client.sendMessage(formattedAdminNumber, adminMessage);
+                    } catch (error) {
+                        console.error(`Error sending admin message to ${adminNumber}:`, error);
+                    }
+                }
+
+                // Handle reminders
+                if (inviteeDetails.phoneNumber) {
+                    try {
+                        const formattedPhoneNumber = formatMexicanNumber(inviteeDetails.phoneNumber);
+                        const reminders = loadReminders();
+                        reminders.push({
+                            phoneNumber: formattedPhoneNumber,
+                            event: eventDetails,
+                            invitee: inviteeDetails,
+                            start_time: eventDetails.start_time,
+                            reminderSent: false,
+                            created_at: new Date().toISOString()
+                        });
+                        saveReminders(reminders);
+                        console.log(`Added reminder for ${formattedPhoneNumber}`);
+                    } catch (error) {
+                        console.error('Error adding reminder:', error);
+                    }
+                }
+            } catch (error) {
+                console.error('Error processing event:', error);
+            }
             processedEvents.push(event.uri);
         }
 

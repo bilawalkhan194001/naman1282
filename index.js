@@ -70,11 +70,15 @@ client.on('ready', async () => {
 
     functions.loadIgnoreList();
     
-    if (!calendlyCheckInterval) {
-        calendlyCheckInterval = setInterval(async () => {
-            const newAppointments = await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
-        }, 60 * 1000);
+    if (calendlyCheckInterval) {
+        clearInterval(calendlyCheckInterval);
     }
+
+    await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
+    
+    calendlyCheckInterval = setInterval(async () => {
+        await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
+    }, 60 * 1000);
 
     if (!isCheckingMessages) {
         setInterval(checkForNewMessages, 1000);
