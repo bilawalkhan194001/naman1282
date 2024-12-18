@@ -12,7 +12,7 @@ const ADMIN_NUMBERS = ['923499490427'];
 global.ADMIN_NUMBERS = ADMIN_NUMBERS;
 
 const assistant = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: process.env.OPENAI_API_KEY || '',
 });
 
 const client = new Client({

@@ -335,12 +335,31 @@ async function checkNewAppointments(client, adminNumbers) {
 
                 // Send notifications
                 const adminMessage = formatEventMessage(eventDetails, inviteeDetails, false);
+                const userMessage = formatEventMessage(eventDetails, inviteeDetails, true);
+
+                // Send to admins
                 for (const adminNumber of adminNumbers) {
                     try {
                         const formattedAdminNumber = `${adminNumber}@c.us`;
                         await client.sendMessage(formattedAdminNumber, adminMessage);
                     } catch (error) {
                         console.error(`Error sending admin message to ${adminNumber}:`, error);
+                    }
+                }
+
+                // Send to user if phone number exists
+                if (inviteeDetails.phoneNumber) {
+                    try {
+                        const formattedPhoneNumber = formatMexicanNumber(inviteeDetails.phoneNumber);
+                        const formattedUserNumber = `${formattedPhoneNumber}@c.us`;
+                        const isRegistered = await client.isRegisteredUser(formattedUserNumber);
+                        
+                        if (isRegistered) {
+                            await client.sendMessage(formattedUserNumber, userMessage);
+                            console.log(`Sent booking confirmation to user: ${formattedPhoneNumber}`);
+                        }
+                    } catch (error) {
+                        console.error(`Error sending user message to ${inviteeDetails.phoneNumber}:`, error);
                     }
                 }
 
