@@ -1,7 +1,7 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
 const moderators = new Set();
-let assistantKey = 'asst_SF6F0GRIRkUQq8OUZ3h17JZp';
+let assistantKey = 'asst_ZMeUIKZN5fMsLXxxTO6r0DdI';
 const userThreads = {};
 const userMessages = {};
 const userMessageQueue = {};
