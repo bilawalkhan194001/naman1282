@@ -1,7 +1,10 @@
 const axios = require('axios');
 const fs = require('fs');
 
-const CALENDLY_API_KEY = 'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzMyODk4NDc1LCJqdGkiOiI1OTYzNzU5Ni0wYWNjLTQ4MDAtYWM2ZS0xYjhiYzhmOWU0ZDciLCJ1c2VyX3V1aWQiOiIzZWY0MGJlMC1hYjUzLTRhMjctYTI0Mi1kN2QyZDA4NWNiNzgifQ.q-QvC1IqsTcT7gADbRoakXL7C4mEvGgpv6hC74evJbFCqEN7mgir9qmqEFJ9IviE2ABRN1lYcVX_tyqfVkEOMQ';
+const CALENDLY_API_KEY = process.env.CALENDLY_API_KEY || '';
+if (!CALENDLY_API_KEY) {
+  throw new Error('CALENDLY_API_KEY environment variable is required');
+}
 
 const BASE_URL = 'https://api.calendly.com';
 const PROCESSED_EVENTS_FILE = 'processed_events.json';
@@ -323,7 +326,7 @@ async function checkNewAppointments(client, adminNumbers) {
 
                 // Save appointment using dashboard API
                 try {
-                    await axios.post('http://0.0.0.0:8080/save_appointment', appointment, {
+                    await axios.post('http://0.0.0.0:0/save_appointment', appointment, {
                         headers: {
                             'Content-Type': 'application/json'
                         }
