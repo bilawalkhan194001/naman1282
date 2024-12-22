@@ -323,7 +323,7 @@ async function checkNewAppointments(client, adminNumbers) {
 
                 // Save appointment using dashboard API
                 try {
-                    await axios.post('http://localhost:8080/save_appointment', appointment, {
+                    await axios.post('http://0.0.0.0:8080/save_appointment', appointment, {
                         headers: {
                             'Content-Type': 'application/json'
                         }
