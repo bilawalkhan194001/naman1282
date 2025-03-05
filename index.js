@@ -8,7 +8,7 @@ const path = require('path');
 const fetch = require('node-fetch');
 const calendly = require('./calendly');
 
-const ADMIN_NUMBERS = ['923499490427'];
+const ADMIN_NUMBERS = ['923499490427','97433862975','97430171900','97455082358'];
 global.ADMIN_NUMBERS = ADMIN_NUMBERS;
 
 const assistant = new OpenAI({
