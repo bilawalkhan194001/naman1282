@@ -1,418 +1,537 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WhatsApp Bot Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
+        :root {
+            --primary-color: #25D366;
+            --secondary-color: #128C7E;
+            --dark-color: #075E54;
+            --light-color: #DCF8C6;
+            --danger-color: #FF5252;
+            --warning-color: #FFC107;
         }
-
+        
         body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8f9fa;
             min-height: 100vh;
-            background: #f5f6fa;
         }
-
-        .container {
-            max-width: 1000px;
-            margin: 2rem auto;
-            padding: 0 1rem;
+        
+        .navbar-brand {
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
-
-        .dashboard-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-            background: white;
-            padding: 1.5rem;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        
+        .sidebar {
+            background-color: #fff;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            height: calc(100vh - 56px);
+            position: fixed;
+            width: 250px;
+            transition: all 0.3s;
+            z-index: 1000;
         }
-
-        h1 {
-            color: #2d3436;
-            font-size: 1.8rem;
+        
+        .sidebar .nav-link {
+            color: #495057;
+            border-radius: 0.25rem;
+            margin: 0.2rem 0;
+            padding: 0.75rem 1rem;
+            transition: all 0.3s;
         }
-
-        .logout {
-            background: #ff7675;
+        
+        .sidebar .nav-link:hover {
+            background-color: rgba(37, 211, 102, 0.1);
+            color: var(--primary-color);
+        }
+        
+        .sidebar .nav-link.active {
+            background-color: var(--primary-color);
             color: white;
-            padding: 0.8rem 1.5rem;
-            border-radius: 10px;
-            text-decoration: none;
-            transition: background-color 0.3s ease;
         }
-
-        .logout:hover {
-            background: #d63031;
+        
+        .sidebar .nav-link i {
+            margin-right: 0.5rem;
         }
-
-        .status {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 15px;
-            margin-bottom: 2rem;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-            font-size: 1.1rem;
-        }
-
-        .status.connected {
-            border-left: 5px solid #00b894;
-            color: #00b894;
-        }
-
-        .status.disconnected {
-            border-left: 5px solid #ff7675;
-            color: #ff7675;
-        }
-
-        .controls {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .button {
-            padding: 1rem;
-            border: none;
-            border-radius: 10px;
-            color: white;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            text-align: center;
-        }
-
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .button.start {
-            background: #00b894;
-        }
-
-        .button.stop {
-            background: #ff7675;
-        }
-
-        .button.reset {
-            background: #0984e3;
-        }
-
-        .qr-code {
-            background: white;
+        
+        .main-content {
+            margin-left: 250px;
             padding: 2rem;
-            border-radius: 15px;
-            text-align: center;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s;
         }
-
-        .qr-code img {
-            max-width: 300px;
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                margin-left: -250px;
+            }
+            
+            .sidebar.show {
+                margin-left: 0;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+        }
+        
+        .card {
+            border: none;
+            border-radius: 0.75rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+        }
+        
+        .status-card {
+            border-left: 5px solid transparent;
+        }
+        
+        .status-connected {
+            border-left-color: var(--primary-color);
+        }
+        
+        .status-disconnected {
+            border-left-color: var(--danger-color);
+        }
+        
+        .status-loading {
+            border-left-color: var(--warning-color);
+        }
+        
+        .btn-whatsapp {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
+        }
+        
+        .btn-whatsapp:hover {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+            color: white;
+        }
+        
+        .btn-reset {
+            background-color: var(--warning-color);
+            border-color: var(--warning-color);
+            color: white;
+        }
+        
+        .btn-reset:hover {
+            background-color: #e0a800;
+            border-color: #e0a800;
+            color: white;
+        }
+        
+        .qr-container {
+            background-color: white;
+            border-radius: 0.75rem;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+        
+        .qr-container img {
+            max-width: 100%;
             height: auto;
         }
-
+        
+        .status-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .connected {
+            color: var(--primary-color);
+        }
+        
+        .disconnected {
+            color: var(--danger-color);
+        }
+        
+        .loading {
+            color: var(--warning-color);
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
-        .fade-in {
-            animation: fadeIn 0.3s ease-out;
+        
+        .toggle-sidebar {
+            display: none;
         }
-
-        .appointments-section {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 15px;
-            margin-top: 2rem;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-        }
-
-        .appointments-header {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .appointments-header h2 {
-            color: #2d3436;
-            font-size: 1.5rem;
-        }
-
-        .filters {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-
-        .filter-input {
-            padding: 0.5rem;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            font-size: 0.9rem;
-        }
-
-        .filter-button {
-            background: #00b894;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        .filter-button:hover {
-            background: #00a884;
-        }
-
-        .appointment-card {
-            background: white;
-            border-radius: 10px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            border-left: 4px solid #00b894;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .appointment-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
-
-        .appointment-name {
-            font-size: 1.2rem;
-            font-weight: 600;
-            color: #2d3436;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .detail-label {
-            font-size: 0.9rem;
-            color: #666;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .detail-value {
-            font-size: 1rem;
-            color: #2d3436;
-            font-weight: 500;
-        }
-
-        .appointment-status {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-weight: 500;
-        }
-
-        .appointment-status.active {
-            background: #00b89415;
-            color: #00b894;
-        }
-
-        .appointment-status.canceled {
-            background: #ff767515;
-            color: #ff7675;
-        }
-
-        .appointment-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 0.5rem;
-        }
-
-        .appointment-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .appointment-detail {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-
-        .cancel-link {
-            color: #ff7675;
-            text-decoration: none;
-            font-size: 0.9rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            transition: color 0.3s ease;
-        }
-
-        .cancel-link:hover {
-            color: #d63031;
-            text-decoration: underline;
-        }
-
-        .appointments-list.loading {
-            position: relative;
-            min-height: 200px;
-        }
-
-        .appointments-list.loading::after {
-            content: "Loading appointments...";
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #666;
-            font-size: 1.1rem;
-        }
-
-        .no-appointments {
-            text-align: center;
-            padding: 2rem;
-            color: #666;
-            font-size: 1.1rem;
-        }
-
-        .appointment-actions {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .action-button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.2rem;
-            padding: 0.3rem;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-
-        .action-button:hover {
-            background-color: #f0f0f0;
-        }
-
-        .delete-btn:hover {
-            background-color: #ffe5e5;
-        }
-
-        .download-btn:hover {
-            background-color: #e5f6ff;
-        }
-
-        .download-all-btn {
-            background: #00b894;
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
-        }
-
-        .download-all-btn:hover {
-            background: #00a884;
-        }
-
-        .header-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
+        
+        @media (max-width: 768px) {
+            .toggle-sidebar {
+                display: block;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="dashboard-header">
-            <h1>WhatsApp Bot Dashboard</h1>
-            <a href="{{ url_for('logout') }}" class="logout">Logout</a>
-        </div>
-        
-        <div id="status" class="status disconnected fade-in">
-            Bot Status: Disconnected
-        </div>
-
-        <div class="controls fade-in">
-            <button onclick="startBot()" class="button start">Start Bot</button>
-            <button onclick="resetBot()" class="button reset">Reset Bot</button>
-        </div>
-
-        <div id="qr-code" class="qr-code fade-in">
-            <!-- QR code will be displayed here -->
-        </div>
-
-        <div class="appointments-section fade-in">
-            <div class="appointments-header">
-                <div class="header-top">
-                    <h2>Calendly Appointments</h2>
-                    <button onclick="downloadAllAppointments()" class="download-all-btn">
-                        📥 Download All
-                    </button>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <button class="btn btn-dark toggle-sidebar me-2" id="sidebarToggle">
+                <i class="bi bi-list"></i>
+            </button>
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-whatsapp me-2"></i>WhatsApp Bot Dashboard
+            </a>
+            <div class="ms-auto d-flex align-items-center">
+                <div class="text-light me-3 d-none d-md-block">
+                    <small>Welcome, <span class="fw-bold">{{ user.username }}</span></small>
                 </div>
-                <div class="filters">
-                    <input type="date" id="start-date" class="filter-input" placeholder="Start Date">
-                    <input type="date" id="end-date" class="filter-input" placeholder="End Date">
-                    <select id="status-filter" class="filter-input">
-                        <option value="">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="canceled">Canceled</option>
-                    </select>
-                    <input type="text" id="search-filter" class="filter-input" placeholder="Search name or email">
-                    <button onclick="applyFilters()" class="filter-button">Apply Filters</button>
-                </div>
+                <a href="/logout" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-box-arrow-right me-1"></i>Logout
+                </a>
             </div>
-            <div class="appointments-list" id="appointments-list">
-                <!-- Appointments will be loaded here -->
+        </div>
+    </nav>
+
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="p-3">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#">
+                            <i class="bi bi-speedometer2"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="refreshSystemInfo()">
+                            <i class="bi bi-info-circle"></i>System Info
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">
+                            <i class="bi bi-box-arrow-right"></i>Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="container-fluid">
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h2 class="mb-4">Bot Status</h2>
+                        <div class="card status-card fade-in" id="statusCard">
+                            <div class="card-body d-flex align-items-center">
+                                <div class="status-icon disconnected" id="statusIcon">
+                                    <i class="bi bi-x-circle-fill"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h5 class="card-title" id="statusTitle">Disconnected</h5>
+                                    <p class="card-text text-muted" id="statusText">The WhatsApp bot is currently disconnected. Please start the bot or scan the QR code to connect.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-md-6 mb-4 mb-md-0">
+                        <div class="card h-100">
+                            <div class="card-header bg-transparent">
+                                <h5 class="mb-0">Quick Actions</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-grid gap-3">
+                                    <button class="btn btn-whatsapp" id="startBotBtn" onclick="startBot()">
+                                        <i class="bi bi-play-circle me-2"></i>Start Bot
+                                    </button>
+                                    <button class="btn btn-danger" id="stopBotBtn" onclick="stopBot()">
+                                        <i class="bi bi-stop-circle me-2"></i>Stop Bot
+                                    </button>
+                                    <button class="btn btn-reset" id="resetBotBtn" onclick="resetBot()">
+                                        <i class="bi bi-arrow-repeat me-2"></i>Reset Bot
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-header bg-transparent">
+                                <h5 class="mb-0">Connection Status</h5>
+                            </div>
+                            <div class="card-body text-center">
+                                <div id="qr-code" class="qr-container">
+                                    <!-- QR code will be displayed here -->
+                                    <p class="text-muted mb-0">Click Start Bot to begin</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">System Information</h5>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="refreshSystemInfo()">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="row" id="systemInfo">
+                                    <div class="col-md-3 col-6 mb-3">
+                                        <div class="d-flex flex-column">
+                                            <span class="text-muted small">Server Time</span>
+                                            <span class="fw-medium" id="serverTime">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-3">
+                                        <div class="d-flex flex-column">
+                                            <span class="text-muted small">Uptime</span>
+                                            <span class="fw-medium" id="uptime">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-3">
+                                        <div class="d-flex flex-column">
+                                            <span class="text-muted small">Node.js Version</span>
+                                            <span class="fw-medium" id="nodeVersion">Loading...</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 col-6 mb-3">
+                                        <div class="d-flex flex-column">
+                                            <span class="text-muted small">Python Version</span>
+                                            <span class="fw-medium" id="pythonVersion">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io/client-dist/socket.io.min.js"></script>
     <script>
         let statusCheckInterval;
         let qrCheckInterval;
         let isConnected = false;
         let qrCodeFound = false;
+        let socket;
+        let isLoading = false;
 
-        function updateStatus(connected) {
-            const statusDiv = document.getElementById('status');
+        // Initialize the dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize WebSocket connection
+            initWebSocket();
+            
+            // Initial status check (will be replaced by WebSocket)
+            checkBotStatus();
+            
+            // Toggle sidebar on mobile
+            document.getElementById('sidebarToggle').addEventListener('click', function() {
+                document.getElementById('sidebar').classList.toggle('show');
+            });
+            
+            // Initial system info load
+            refreshSystemInfo();
+        });
+        
+        function initWebSocket() {
+            // Connect to WebSocket server
+            socket = io();
+            
+            // Listen for bot status updates
+            socket.on('bot_status', function(data) {
+                updateStatus(data.connected, data.status, data.bot_running);
+            });
+            
+            // Listen for QR code updates
+            socket.on('qr_code', function(data) {
+                // Only update QR code if we're in a connecting state or already found a QR code
+                if (isLoading || qrCodeFound || isConnected) {
+                    if (data.exists) {
+                        qrCodeFound = true;
+                        displayQRCode(data.qr_code_url);
+                        
+                        // If we have a status, update the QR message
+                        if (data.status === 'waiting_for_scan') {
+                            const qrCodeContainer = document.getElementById('qr-code');
+                            const imgElement = qrCodeContainer.querySelector('img');
+                            if (imgElement) {
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'mt-3 alert alert-info';
+                                messageDiv.innerHTML = '<i class="bi bi-info-circle me-2"></i>Please scan this QR code with your WhatsApp to connect the bot.';
+                                
+                                // Only add if not already present
+                                if (!qrCodeContainer.querySelector('.alert-info')) {
+                                    qrCodeContainer.appendChild(messageDiv);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Listen for system info updates
+            socket.on('system_info', function(data) {
+                updateSystemInfo(data);
+            });
+            
+            // Handle connection errors
+            socket.on('connect_error', function() {
+                console.log('WebSocket connection failed, falling back to polling');
+                fallbackToPolling();
+            });
+        }
+        
+        function fallbackToPolling() {
+            // If WebSocket fails, fall back to regular polling
+            if (!statusCheckInterval) {
+                statusCheckInterval = setInterval(checkBotStatus, 5000);
+            }
+            if (!qrCheckInterval && !isConnected && !qrCodeFound) {
+                startQRCheck();
+            }
+        }
+
+        function updateStatus(connected, status, botRunning) {
+            const statusCard = document.getElementById('statusCard');
+            const statusIcon = document.getElementById('statusIcon');
+            const statusTitle = document.getElementById('statusTitle');
+            const statusText = document.getElementById('statusText');
+            const startBotBtn = document.getElementById('startBotBtn');
+            const stopBotBtn = document.getElementById('stopBotBtn');
+            const resetBotBtn = document.getElementById('resetBotBtn');
+            
+            // If botRunning is not provided, use the status to determine
+            if (botRunning === undefined) {
+                botRunning = status === 'connecting' || connected;
+            }
+            
+            isLoading = false;
+            
             if (connected) {
-                statusDiv.className = 'status connected';
-                statusDiv.textContent = 'Bot Status: Connected';
+                statusCard.className = 'card status-card status-connected fade-in';
+                statusIcon.className = 'status-icon connected';
+                statusIcon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+                statusTitle.textContent = 'Connected';
+                statusText.textContent = 'The WhatsApp bot is connected and running properly.';
+                
+                // Update button states
+                startBotBtn.disabled = true;
+                stopBotBtn.disabled = false;
+                resetBotBtn.disabled = false;
+                
                 isConnected = true;
                 clearQRCheck();
-                document.getElementById('qr-code').innerHTML = '';
+                document.getElementById('qr-code').innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>Bot connected successfully!</div>';
+                
                 if (statusCheckInterval) {
                     clearInterval(statusCheckInterval);
                     statusCheckInterval = null;
                 }
             } else {
-                statusDiv.className = 'status disconnected';
-                statusDiv.textContent = 'Bot Status: Disconnected';
+                // Handle different disconnected states
+                if (status === 'connecting') {
+                    statusCard.className = 'card status-card status-loading fade-in';
+                    statusIcon.className = 'status-icon loading';
+                    statusIcon.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    statusTitle.textContent = 'Connecting...';
+                    statusText.textContent = 'The WhatsApp bot is initializing. Please wait or scan the QR code when it appears.';
+                    
+                    // Update button states during connecting
+                    startBotBtn.disabled = true;
+                    stopBotBtn.disabled = false;
+                    resetBotBtn.disabled = false;
+                } else if (status === 'resetting') {
+                    statusCard.className = 'card status-card status-loading fade-in';
+                    statusIcon.className = 'status-icon loading';
+                    statusIcon.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+                    statusTitle.textContent = 'Resetting...';
+                    statusText.textContent = 'The WhatsApp bot is being reset. Please wait for the QR code to appear.';
+                    
+                    // Update button states during reset
+                    startBotBtn.disabled = true;
+                    stopBotBtn.disabled = true;
+                    resetBotBtn.disabled = true;
+                } else if (status === 'error') {
+                    statusCard.className = 'card status-card status-disconnected fade-in';
+                    statusIcon.className = 'status-icon disconnected';
+                    statusIcon.innerHTML = '<i class="bi bi-exclamation-triangle"></i>';
+                    statusTitle.textContent = 'Connection Error';
+                    statusText.textContent = 'Failed to connect to WhatsApp. Please try resetting the bot or check server logs.';
+                    
+                    // Update button states after error
+                    startBotBtn.disabled = false;
+                    stopBotBtn.disabled = true;
+                    resetBotBtn.disabled = false;
+                } else {
+                    // Default disconnected state
+                    statusCard.className = 'card status-card status-disconnected fade-in';
+                    statusIcon.className = 'status-icon disconnected';
+                    statusIcon.innerHTML = '<i class="bi bi-x-circle-fill"></i>';
+                    statusTitle.textContent = 'Disconnected';
+                    statusText.textContent = 'The WhatsApp bot is currently disconnected. Please start the bot or scan the QR code to connect.';
+                    
+                    // Update button states
+                    startBotBtn.disabled = false;
+                    stopBotBtn.disabled = true;
+                    resetBotBtn.disabled = false;
+                }
+                
                 isConnected = false;
-                if (!qrCheckInterval) startQRCheck();
+                if (!qrCheckInterval && status !== 'resetting' && status !== 'connecting') {
+                    startQRCheck();
+                }
                 if (!statusCheckInterval) {
                     statusCheckInterval = setInterval(checkBotStatus, 5000);
                 }
             }
+        }
+
+        function setLoadingStatus(message) {
+            const statusCard = document.getElementById('statusCard');
+            const statusIcon = document.getElementById('statusIcon');
+            const statusTitle = document.getElementById('statusTitle');
+            const statusText = document.getElementById('statusText');
+            const startBotBtn = document.getElementById('startBotBtn');
+            const stopBotBtn = document.getElementById('stopBotBtn');
+            const resetBotBtn = document.getElementById('resetBotBtn');
+            
+            isLoading = true;
+            
+            // Disable all buttons during loading
+            startBotBtn.disabled = true;
+            stopBotBtn.disabled = true;
+            resetBotBtn.disabled = true;
+            
+            statusCard.className = 'card status-card status-loading fade-in';
+            statusIcon.className = 'status-icon loading';
+            statusIcon.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+            statusTitle.textContent = 'Connecting...';
+            statusText.textContent = message || 'The WhatsApp bot is initializing. Please wait...';
         }
 
         function clearQRCheck() {
@@ -427,234 +546,164 @@
             fetch('/bot_status')
                 .then(response => response.json())
                 .then(data => {
-                    updateStatus(data.connected);
+                    updateStatus(data.connected, data.status, data.bot_running);
+                    
+                    // If bot is not connected and not in a connecting state,
+                    // and we haven't explicitly started the bot, keep the connection status area clean
+                    if (!data.connected && data.status !== 'connecting' && !isLoading && !qrCodeFound) {
+                        document.getElementById('qr-code').innerHTML = '<p class="text-muted mb-0">Click Start Bot to begin</p>';
+                    }
                 })
                 .catch(error => console.error('Error:', error));
         }
 
-        function startQRCheck() {
-            clearQRCheck();
-            checkQRCode();
-            qrCheckInterval = setInterval(checkQRCode, 1000);
-        }
-
         function checkQRCode() {
             if (isConnected || qrCodeFound) {
-                clearQRCheck();
                 return;
             }
 
             fetch('/qr_code_exists')
                 .then(response => response.json())
                 .then(data => {
-                    if (data.exists) {
-                        document.getElementById('qr-code').innerHTML = 
-                            `<img src="/get_qr_code?${new Date().getTime()}" alt="QR Code">`;
-                        qrCodeFound = true;
+                    // Only proceed if the bot is actually trying to connect
+                    if (data.is_connecting) {
+                        // Don't show waiting message during loading states
+                        if (!isLoading) {
+                            const qrCodeContainer = document.getElementById('qr-code');
+                            // Only update if not already showing a specific message (like an error)
+                            if (!qrCodeContainer.querySelector('.alert-danger') && 
+                                !qrCodeContainer.querySelector('.alert-warning') && 
+                                !qrCodeContainer.querySelector('.alert-info')) {
+                                qrCodeContainer.innerHTML = '<div class="d-flex justify-content-center align-items-center" style="height: 200px;"><div class="spinner-border text-secondary" role="status"></div><span class="ms-3">Waiting for connection...</span></div>';
+                            }
+                        }
+
+                        if (data.exists) {
+                            qrCodeFound = true;
+                            displayQRCode();
+                        } else if (!isLoading) {
+                            // Count how many times we've checked
+                            if (!window.qrCheckCount) {
+                                window.qrCheckCount = 1;
+                            } else {
+                                window.qrCheckCount++;
+                            }
+                            
+                            // After 15 seconds (15 checks at 1 second interval), show a more urgent message
+                            if (window.qrCheckCount > 15) {
+                                document.getElementById('qr-code').innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Connecting...</div>';
+                            }
+                        }
+                    } else if (!data.bot_running && !isLoading) {
+                        // If bot is not running and we're not in a loading state, show the default message
+                        document.getElementById('qr-code').innerHTML = '<p class="text-muted mb-0">Click Start Bot to begin</p>';
+                        // Clear the check interval since we're not connecting
                         clearQRCheck();
                     }
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(error => console.error('Error checking QR code:', error));
+        }
+
+        function startQRCheck() {
+            clearQRCheck();
+            // Reset the check counter
+            window.qrCheckCount = 0;
+            checkQRCode();
+            qrCheckInterval = setInterval(checkQRCode, 1000);
+        }
+
+        function displayQRCode(qrCodeUrl) {
+            const qrCodeContainer = document.getElementById('qr-code');
+            qrCodeContainer.innerHTML = `
+                <div class="mb-3">
+                    <h6 class="text-muted">Scan this QR code with your WhatsApp</h6>
+                </div>
+                <img src="${qrCodeUrl || `/get_qr_code?t=${new Date().getTime()}`}" alt="QR Code" class="img-fluid">
+            `;
         }
 
         function resetBot() {
-            fetch('/reset_bot')
-                .then(response => response.json())
-                .then(data => {
-                    console.log(data.message);
-                    updateStatus(false);
-                    qrCodeFound = false;
-                    startQRCheck();
-                })
-                .catch(error => console.error('Error:', error));
-        }
-
-        checkBotStatus();
-        
-        if (!isConnected) {
-            statusCheckInterval = setInterval(checkBotStatus, 5000);
-            startQRCheck();
-        }
-
-        function loadAppointments() {
-            const appointmentsList = document.getElementById('appointments-list');
-            appointmentsList.classList.add('loading');
-            
-            const startDate = document.getElementById('start-date').value;
-            const endDate = document.getElementById('end-date').value;
-            const status = document.getElementById('status-filter').value;
-            const search = document.getElementById('search-filter').value;
-
-            console.log('Loading appointments with filters:', { startDate, endDate, status, search });
-
-            fetch(`/get_appointments?start_date=${startDate}&end_date=${endDate}&status=${status}&search=${search}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(appointments => {
-                    console.log(`Loaded ${appointments.length} appointments`);
-                    appointmentsList.classList.remove('loading');
-                    appointmentsList.innerHTML = '';
-
-                    if (appointments.length === 0) {
-                        appointmentsList.innerHTML = `
-                            <div class="no-appointments">
-                                <p>📅 No appointments found</p>
-                                ${search || startDate || endDate || status ? '<p>Try adjusting your search filters</p>' : ''}
-                            </div>
-                        `;
-                        return;
-                    }
-
-                    appointments.forEach((appointment, index) => {
-                        const card = createAppointmentCard(appointment, index);
-                        appointmentsList.appendChild(card);
+            if (confirm('Are you sure you want to reset the bot? This will disconnect the current session.')) {
+                setLoadingStatus('Resetting the bot. This may take a moment...');
+                
+                fetch('/reset_bot')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateStatus(false);
+                        startQRCheck();
+                        document.getElementById('qr-code').innerHTML = '<p class="text-muted mb-0">Waiting for connnection... If no QR code appears, please click Reset Bot again.</p>';
+                    })
+                    .catch(error => {
+                        console.error('Error resetting bot:', error);
+                        updateStatus(false);
+                        document.getElementById('qr-code').innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Failed to reset bot. Please try again.</div>';
                     });
-                })
-                .catch(error => {
-                    console.error('Error loading appointments:', error);
-                    appointmentsList.classList.remove('loading');
-                    appointmentsList.innerHTML = `
-                        <div class="no-appointments">
-                            <p>❌ Error loading appointments</p>
-                            <p>Error: ${error.message}</p>
-                            <button onclick="loadAppointments()" class="filter-button">Try Again</button>
-                        </div>
-                    `;
-                });
+            }
         }
-
-        function createAppointmentCard(appointment, index) {
-            const card = document.createElement('div');
-            const status = appointment.status?.toLowerCase() || 'active';
-            card.className = `appointment-card ${status}`;
-            
-            const startTime = new Date(appointment.start_time).toLocaleString();
-            const endTime = new Date(appointment.end_time).toLocaleString();
-
-            card.innerHTML = `
-                <div class="appointment-header">
-                    <span class="appointment-name">🗓️ New Appointment</span>
-                    <div class="appointment-actions">
-                        <span class="appointment-status ${status}">
-                            ${status === 'active' ? '✅' : '❌'} ${status.charAt(0).toUpperCase() + status.slice(1)}
-                        </span>
-                        <button onclick="downloadAppointment(${index})" class="action-button download-btn" title="Download">
-                            📥
-                        </button>
-                        <button onclick="deleteAppointment(${index})" class="action-button delete-btn" title="Delete">
-                            🗑️
-                        </button>
-                    </div>
-                </div>
-                <div class="appointment-details">
-                    <div class="appointment-detail">
-                        <span class="detail-label">👤 Invitee Name</span>
-                        <span class="detail-value">${appointment.invitee_name || 'N/A'}</span>
-                    </div>
-                    <div class="appointment-detail">
-                        <span class="detail-label">📧 Email</span>
-                        <span class="detail-value">${appointment.invitee_email || 'N/A'}</span>
-                    </div>
-                    <div class="appointment-detail">
-                        <span class="detail-label">🕒 Start Time</span>
-                        <span class="detail-value">${startTime}</span>
-                    </div>
-                    <div class="appointment-detail">
-                        <span class="detail-label">🕕 End Time</span>
-                        <span class="detail-value">${endTime}</span>
-                    </div>
-                    <div class="appointment-detail">
-                        <span class="detail-label">📝 Event Type</span>
-                        <span class="detail-value">${appointment.event_type || 'N/A'}</span>
-                    </div>
-                    ${appointment.cancel_url ? `
-                    <div class="appointment-detail">
-                        <span class="detail-label">🔗 Cancellation</span>
-                        <a href="${appointment.cancel_url}" target="_blank" class="cancel-link">Cancel Appointment</a>
-                    </div>
-                    ` : ''}
-                </div>
-            `;
-            return card;
-        }
-
-        function applyFilters() {
-            loadAppointments();
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            loadAppointments();
-            setInterval(loadAppointments, 60000);
-        });
 
         function startBot() {
+            setLoadingStatus('Starting the bot. Please wait while we try to connect...');
+            
+            // Immediately update UI to show connecting state
+            updateStatus(false, 'connecting');
+            document.getElementById('qr-code').innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split me-2"></i>Initializing WhatsApp connection. Please wait or scan the QR code when appear...</div>';
+            
             fetch('/start_bot')
                 .then(response => response.json())
                 .then(data => {
-                    console.log(data.message);
-                    updateStatus(false);
-                    qrCodeFound = false;
-                    startQRCheck();
-                })
-                .catch(error => console.error('Error:', error));
-        }
-
-        function deleteAppointment(index) {
-            if (!confirm('Are you sure you want to delete this appointment?')) {
-                return;
-            }
-
-            fetch(`/delete_appointment/${index}`, {
-                method: 'DELETE'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    loadAppointments(); // Refresh the list
-                    alert('Appointment deleted successfully');
-                } else {
-                    alert('Error deleting appointment: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error deleting appointment');
-            });
-        }
-
-        function downloadAppointment(index) {
-            window.location.href = `/download_appointment/${index}`;
-        }
-
-        function downloadAllAppointments() {
-            fetch('/download_all_appointments')
-                .then(response => {
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            throw new Error('No appointments to download');
-                        }
-                        throw new Error('Failed to download appointments');
+                    if (data.connected) {
+                        updateStatus(true);
+                    } else if (data.error) {
+                        // Show error message
+                        updateStatus(false, 'error');
+                        document.getElementById('qr-code').innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>${data.message || 'Failed to start bot. Please try the Reset button.'}</div>`;
+                    } else {
+                        // Still connecting, waiting for QR code
+                        updateStatus(false, 'connecting');
+                        startQRCheck();
                     }
-                    return response.blob();
-                })
-                .then(blob => {
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `all_appointments_${new Date().toISOString().split('T')[0]}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
                 })
                 .catch(error => {
-                    console.error('Error:', error);
-                    alert(error.message);
+                    console.error('Error starting bot:', error);
+                    updateStatus(false, 'error');
+                    document.getElementById('qr-code').innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Failed to start bot. Please try the Reset button.</div>';
                 });
+        }
+
+        function stopBot() {
+            if (confirm('Are you sure you want to stop the bot? This will disconnect the current session but keep the dashboard active.')) {
+                setLoadingStatus('Stopping the bot. Please wait...');
+                
+                fetch('/stop_bot')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateStatus(false);
+                        document.getElementById('qr-code').innerHTML = '<div class="alert alert-warning"><i class="bi bi-info-circle me-2"></i>Bot has been stopped. Click Start Bot to reconnect.</div>';
+                    })
+                    .catch(error => {
+                        console.error('Error stopping bot:', error);
+                        updateStatus(false);
+                        document.getElementById('qr-code').innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Error stopping bot. Please try again.</div>';
+                    });
+            }
+        }
+
+        function refreshSystemInfo() {
+            fetch('/system_info')
+                .then(response => response.json())
+                .then(data => {
+                    updateSystemInfo(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching system info:', error);
+                });
+        }
+
+        function updateSystemInfo(data) {
+            document.getElementById('serverTime').textContent = data.server_time;
+            document.getElementById('uptime').textContent = data.uptime;
+            document.getElementById('nodeVersion').textContent = data.node_version;
+            document.getElementById('pythonVersion').textContent = data.python_version;
         }
     </script>
 </body>

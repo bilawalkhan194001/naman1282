@@ -1,7 +1,7 @@
 const POLLING_INTERVAL = 1000;
 const MAX_RETRIES = 60;
 const moderators = new Set();
-let assistantKey = 'asst_8UxzIrQN6g6jJBYInmEnQpjv';
+let assistantKey = process.env.OPENAI_ASSISTANT_ID || 'asst_8UxzIrQN6g6jJBYInmEnQpjv';
 const userThreads = {};
 const userMessages = {};
 const userMessageQueue = {};
@@ -20,22 +20,46 @@ const ignoreList = new Set();
 
 function saveIgnoreList() {
     const ignoreArray = Array.from(ignoreList);
-    fs.writeFileSync(IGNORE_LIST_FILE, JSON.stringify(ignoreArray, null, 2), 'utf8');
+    try {
+        const jsonData = JSON.stringify(ignoreArray, null, 2);
+        fs.writeFileSync(IGNORE_LIST_FILE, jsonData, { encoding: 'utf8' });
+    } catch (error) {
+        console.error('Error saving ignore list:', error);
+    }
 }
 
 function loadIgnoreList() {
     try {
         if (fs.existsSync(IGNORE_LIST_FILE)) {
-            const data = fs.readFileSync(IGNORE_LIST_FILE, 'utf8');
+            let data = fs.readFileSync(IGNORE_LIST_FILE, 'utf8');
+
+            // Remove BOM and other potential invalid characters
+            if (data.charCodeAt(0) === 0xFEFF) {
+                data = data.slice(1);
+            }
+
+            // Clean the data of any non-printable characters
+            data = data.replace(/[^\x20-\x7E\r\n]/g, '');
+
             if (data.trim() === '') {
+                // Empty file, initialize with empty array
                 ignoreList.clear();
                 saveIgnoreList();
             } else {
-                const ignoreArray = JSON.parse(data);
-                ignoreList.clear();
-                ignoreArray.forEach(number => ignoreList.add(number));
+                try {
+                    // Try to parse the JSON
+                    const ignoreArray = JSON.parse(data);
+                    ignoreList.clear();
+                    ignoreArray.forEach(number => ignoreList.add(number));
+                } catch (parseError) {
+                    // If JSON parsing fails, reset the file
+                    console.error('Error parsing ignore list JSON, resetting file:', parseError);
+                    ignoreList.clear();
+                    saveIgnoreList();
+                }
             }
         } else {
+            // File doesn't exist, create it
             ignoreList.clear();
             saveIgnoreList();
         }
@@ -408,7 +432,7 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                         if (!isAdmin && !isModerator) {
                             return "You don't have permission to use this command.";
                         }
-                        
+
                         try {
                             const quotedStrings = extractMultipleQuotedStrings(args.join(' '));
                             if (quotedStrings.length !== 2) {
@@ -416,13 +440,13 @@ async function handleCommand(client, assistantOrOpenAI, message, senderNumber, i
                             }
 
                             const [recipientNumber, responseMessage] = quotedStrings;
-                            
+
                             if (!recipientNumber.match(/^\d+$/)) {
                                 return 'Invalid phone number format. Please provide only numbers without any special characters.';
                             }
 
                             await sendMessageWithValidation(client, recipientNumber, responseMessage, senderNumber);
-                            
+
                             return `Response sent to ${recipientNumber}`;
                         } catch (error) {
                             console.error('Error in respond command:', error);
@@ -529,7 +553,7 @@ async function processMessageQueue(client, assistantOrOpenAI, senderNumber) {
             const message = messageQueues[senderNumber][0];
             await processUserMessages(client, assistantOrOpenAI, senderNumber, message);
             messageQueues[senderNumber].shift();
-            
+
             await sleep(1000);
         }
     } catch (error) {
@@ -557,23 +581,10 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
             const transcription = await transcribeAudio(assistantOrOpenAI, audioBuffer);
             messageToStore = `Transcribed voice message: ${transcription}`;
         } else if (message.type === 'document') {
-            return "As a vision model, I can only process images at the moment. Please send your document as an image if possible.";
+            return "Can't process documents at the moment.";
         } else if (message.type === 'image') {
-            const media = await message.downloadMedia();
-            
-            const fileSizeInMB = Buffer.from(media.data, 'base64').length / (1024 * 1024);
-            if (fileSizeInMB > 10) {
-                return "The image is too large to process. Please send an image smaller than 10MB.";
-            }
-
-            const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-            if (!supportedTypes.includes(media.mimetype)) {
-                return "Please send images in JPEG, PNG, GIF, or WEBP format.";
-            }
-
-            const response = await processImageOrDocument(assistantOrOpenAI, media, message.body);
-            return response;
+            // Image processing is temporarily disabled
+            return "Image processing is temporarily disabled. Please send a text message instead.";
         } else {
             messageToStore = message.body || `A message of type ${message.type} was received`;
         }
@@ -582,45 +593,96 @@ async function storeUserMessage(client, assistantOrOpenAI, senderNumber, message
         return null;
     } catch (error) {
         console.error(`Error processing message: ${error.message}`);
-        return "I encountered an issue processing your message. I can handle images and text messages - please try again!";
+        return "I encountered an issue processing your message. I can handle text messages - please try again!";
     }
 }
 
-async function processImageOrDocument(assistantOrOpenAI, media, text) {
+async function processImageOrDocument(assistantOrOpenAI, media, text, senderNumber) {
     try {
-        if (!media.mimetype.startsWith('image/')) {
-            return "I can only analyze images at the moment.";
+        if (!media || !media.data) {
+            return "I couldn't process this media. Please try sending it again.";
         }
 
         const base64Data = media.data;
         const defaultPrompt = "What's in this image?";
+        const userPrompt = text || defaultPrompt;
 
-        const messages = [
-            {
-                role: "user",
-                content: [
-                    { type: "text", text: text || defaultPrompt },
-                    {
-                        type: "image_url",
-                        image_url: {
-                            url: `data:${media.mimetype};base64,${base64Data}`
-                        }
+        // Get or create a thread for this user
+        let threadId = userThreads[senderNumber];
+        if (!threadId) {
+            const thread = await assistantOrOpenAI.beta.threads.create();
+            threadId = thread.id;
+            userThreads[senderNumber] = threadId;
+        }
+
+        // Add the message with text and image to the thread
+        await assistantOrOpenAI.beta.threads.messages.create(threadId, {
+            role: "user",
+            content: [
+                {
+                    type: "text",
+                    text: userPrompt
+                },
+                {
+                    type: "image_url",
+                    image_url: {
+                        url: `data:${media.mimetype};base64,${base64Data}`,
+                        detail: "high"
                     }
-                ]
-            }
-        ];
-
-        const response = await assistantOrOpenAI.chat.completions.create({
-            model: "gpt-4o",
-            messages: messages,
-            max_tokens: 1000,
-            temperature: 0.7
+                }
+            ]
         });
 
-        return response.choices[0].message.content;
+        // Run the assistant on the thread
+        const run = await assistantOrOpenAI.beta.threads.runs.create(threadId, {
+            assistant_id: assistantKey
+        });
+
+        // Poll for the run to complete
+        let runStatus;
+        let attempts = 0;
+        const maxAttempts = 30; // Timeout after 30 attempts (30 seconds)
+
+        while (attempts < maxAttempts) {
+            runStatus = await assistantOrOpenAI.beta.threads.runs.retrieve(threadId, run.id);
+
+            if (runStatus.status === 'completed') {
+                break;
+            } else if (runStatus.status === 'failed' || runStatus.status === 'cancelled') {
+                throw new Error(`Run failed with status: ${runStatus.status}`);
+            }
+
+            await sleep(1000); // Wait 1 second before checking again
+            attempts++;
+        }
+
+        if (attempts >= maxAttempts) {
+            throw new Error('Timed out waiting for assistant response');
+        }
+
+        // Get the assistant's response
+        const messages = await assistantOrOpenAI.beta.threads.messages.list(threadId);
+        const assistantMessages = messages.data.filter(msg => msg.role === 'assistant');
+
+        if (assistantMessages.length === 0) {
+            return "I couldn't generate a response. Please try again.";
+        }
+
+        // Get the most recent assistant message
+        const latestMessage = assistantMessages[0];
+        let responseText = "";
+
+        // Extract text from the message content
+        for (const contentPart of latestMessage.content) {
+            if (contentPart.type === 'text') {
+                responseText += contentPart.text.value;
+            }
+        }
+
+        return responseText;
     } catch (error) {
         console.error('Error in processImageOrDocument:', error);
-        return "I can analyze images for you. Please send me an image and I'll describe what I see!";
+        return "I had trouble processing your image. Please try again later.";
     }
 }
 
@@ -634,7 +696,7 @@ async function processUserMessages(client, assistantOrOpenAI, senderNumber, mess
 
         const formattedSender = formatMexicanNumber(senderNumber);
         const formattedSenderNumber = `${formattedSender}@c.us`;
-        
+
         if (!formattedSenderNumber.match(/^\d+@c\.us$/)) {
             throw new Error(`Invalid sender number format: ${formattedSenderNumber}`);
         }
@@ -706,7 +768,7 @@ async function handleHumanRequest(senderNumber, client, adminNumbers) {
         }
 
         const timestamp = new Date().toLocaleString();
-        
+
         const notificationMessage = `
 🔔 *Human Representative Request*
 ---------------------------
@@ -715,10 +777,10 @@ Time: ${timestamp}
 Status: Awaiting response
 ---------------------------
 To respond, use: !!respond "${senderNumber}" "your message"`;
-        
+
         let notifiedAdmins = 0;
         let failedNotifications = [];
-        
+
         for (const adminNumber of adminNumbers) {
             try {
                 const formattedAdminNumber = `${adminNumber}@c.us`;
@@ -734,7 +796,7 @@ To respond, use: !!respond "${senderNumber}" "your message"`;
             console.error('Failed to notify any admins about human request');
             throw new Error('Failed to reach customer service team');
         }
-        
+
         return `I've forwarded your request to our customer service team. A human representative will contact you shortly. Your request has been logged at ${timestamp}. Thank you for your patience.`;
     } catch (error) {
         console.error('Error in handleHumanRequest:', error);

@@ -35,4 +35,5 @@ temp/
 # Debug files
 .debug/
 
+auth_data/
 

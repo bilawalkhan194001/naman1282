@@ -1,6 +1,12 @@
 @echo off
 call npm install
 call pip install -r requirements.txt
+
+REM Load environment variables from .env file
+for /f "tokens=*" %%a in ('type yy123123\.env ^| findstr /v "^#"') do (
+    set "%%a"
+)
+
 set FLASK_ENV=production
 set FLASK_APP=dashboard.py
-python -m flask run --host=0.0.0.0 --port=8080
+python -m flask run --host=0.0.0.0 --port=8080 

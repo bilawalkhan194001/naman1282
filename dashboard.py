@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
+from flask_socketio import SocketIO, emit
 from functools import wraps
 import json
 import os
@@ -7,47 +8,32 @@ import subprocess
 import signal
 import shutil
 import time
+import threading
 from datetime import datetime, timedelta
+import platform
+import sys
+import psutil
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-# Replace with a strong secret key
-app.secret_key = 'hgfdsdfghjhgfdrty5434567uyt56uhgfrt6y78765432ertyj'
+# Get secret key from environment variable
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
+# Initialize SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*")
 logging.basicConfig(level=logging.DEBUG)
 
 # Add these global variables at the top level
 bot_process = None
 bot_connected = False
-APPOINTMENTS_FILE = 'appointments.json'
+# Flag to control background threads
+should_run_background_tasks = True
 
-def load_appointments():
-    if os.path.exists(APPOINTMENTS_FILE):
-        try:
-            with open(APPOINTMENTS_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return []
-    return []
-
-def save_appointment(appointment):
-    try:
-        appointments = load_appointments()
-        appointments.append(appointment)
-        with open(APPOINTMENTS_FILE, 'w') as f:
-            json.dump(appointments, f, indent=2)
-        print(f"✅ Appointment saved successfully: {appointment.get('invitee_name')} - {appointment.get('start_time')}")
-    except Exception as e:
-        print(f"❌ Error saving appointment: {str(e)}")
-
-@app.route('/save_appointment', methods=['POST'])
-def save_new_appointment():
-    try:
-        data = request.json
-        print(f"📅 Received new appointment data: {data}")
-        save_appointment(data)
-        return jsonify({"success": True, "message": "Appointment saved successfully"})
-    except Exception as e:
-        print(f"❌ Error in save_new_appointment: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+# Get dashboard credentials from environment variables
+DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'ai')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'WH102938jp..@')
 
 
 def login_required(f):
@@ -59,46 +45,14 @@ def login_required(f):
     return decorated_function
 
 
-@app.route('/get_appointments')
-@login_required
-def get_appointments():
-    appointments = load_appointments()
-
-    # Get filter parameters
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    status = request.args.get('status')
-    search = request.args.get('search', '').lower()
-
-    # Apply filters
-    if start_date:
-        start_date = datetime.strptime(start_date, '%Y-%m-%d')
-        appointments = [a for a in appointments if datetime.strptime(
-            a['start_time'].split('T')[0], '%Y-%m-%d') >= start_date]
-
-    if end_date:
-        end_date = datetime.strptime(end_date, '%Y-%m-%d')
-        appointments = [a for a in appointments if datetime.strptime(
-            a['start_time'].split('T')[0], '%Y-%m-%d') <= end_date]
-
-    if status:
-        appointments = [a for a in appointments if a.get(
-            'status', '').lower() == status.lower()]
-
-    if search:
-        appointments = [a for a in appointments if
-                        search in a.get('invitee_name', '').lower() or
-                        search in a.get('invitee_email', '').lower()]
-
-    return jsonify(appointments)
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username == 'ai' and password == 'WH102938jp..@' :
+        if username == DASHBOARD_USERNAME and password == DASHBOARD_PASSWORD:
             session['logged_in'] = True
+            session['username'] = username
             return redirect(url_for('index'))
         else:
             return render_template('login.html', error='Invalid credentials')
@@ -114,7 +68,10 @@ def logout():
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html')
+    # Get username from session or use default
+    username = session.get('username', 'admin')
+    user = {'username': username}
+    return render_template('index.html', user=user)
 
 
 @app.route('/get_qr_code')
@@ -143,7 +100,20 @@ def is_bot_ready():
 @app.route('/qr_code_exists')
 @login_required
 def qr_code_exists():
-    return jsonify({"exists": os.path.exists('qr_code.png')})
+    global bot_process, bot_connected
+
+    # Check if bot is running but not connected (connecting state)
+    bot_running = bot_process is not None and bot_process.poll() is None
+    is_connecting = bot_running and not bot_connected
+
+    # Only check for QR code if we're in a connecting state
+    qr_exists = os.path.exists('qr_code.png') if is_connecting else False
+
+    return jsonify({
+        "exists": qr_exists,
+        "is_connecting": is_connecting,
+        "bot_running": bot_running
+    })
 
 
 @app.route('/set_bot_connected', methods=['POST'])
@@ -159,13 +129,23 @@ def set_bot_connected():
 @login_required
 def reset_bot():
     global bot_process, bot_connected
-    
+
+    # Update UI immediately
+    socketio.emit('bot_status', {'connected': False, 'status': 'resetting'})
+
     # Stop the bot if it's running
     if bot_process is not None and bot_process.poll() is None:
-        os.kill(bot_process.pid, signal.SIGTERM)
-        bot_process.wait()
+        try:
+            os.kill(bot_process.pid, signal.SIGTERM)
+            bot_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # Force kill if it doesn't terminate gracefully
+            os.kill(bot_process.pid, signal.SIGKILL)
+        except Exception as e:
+            app.logger.error(f"Error stopping bot during reset: {str(e)}")
+
         bot_process = None
-    
+
     # Clear the auth directory
     cache_dir = '.wwebjs_auth'
     if os.path.exists(cache_dir):
@@ -178,20 +158,54 @@ def reset_bot():
                 if attempt < max_attempts - 1:
                     time.sleep(1)
                 else:
-                    return jsonify({"message": "Failed to remove cache. Please try again.", "connected": False})
-    
+                    return jsonify({
+                        "message": "Failed to remove cache. Please try again.",
+                        "connected": False,
+                        "error": True,
+                        "status": "error"
+                    })
+
     # Remove old QR code if it exists
     if os.path.exists('qr_code.png'):
         try:
             os.remove('qr_code.png')
         except PermissionError:
             pass
-    
+
     # Start the bot
-    bot_process = subprocess.Popen(['node', 'index.js'])
-    bot_connected = False
-    
-    return jsonify({"message": "Bot reset successfully. Please scan the new QR code.", "connected": False})
+    try:
+        bot_process = subprocess.Popen(['node', 'index.js'])
+
+        # Wait a moment to check if the process started successfully
+        time.sleep(1)
+        if bot_process.poll() is not None:
+            # Process terminated immediately
+            return jsonify({
+                "message": "Failed to restart bot. Check server logs for details.",
+                "connected": False,
+                "error": True,
+                "status": "error"
+            })
+
+        bot_connected = False
+
+        # Emit status update via WebSocket
+        socketio.emit(
+            'bot_status', {'connected': False, 'status': 'connecting'})
+
+        return jsonify({
+            "message": "Bot reset successfully. Please wait for the QR code to appear.",
+            "connected": False,
+            "status": "connecting"
+        })
+    except Exception as e:
+        app.logger.error(f"Error restarting bot after reset: {str(e)}")
+        return jsonify({
+            "message": f"Error restarting bot: {str(e)}",
+            "connected": False,
+            "error": True,
+            "status": "error"
+        })
 
 
 @app.route('/set_bot_disconnected', methods=['POST'])
@@ -205,114 +219,246 @@ def set_bot_disconnected():
 @login_required
 def start_bot():
     global bot_process, bot_connected
-    
+
     # If bot is already running, return success
     if bot_process is not None and bot_process.poll() is None:
-        return jsonify({"message": "Bot is already running", "connected": bot_connected})
-    
-    # Start the bot
-    bot_process = subprocess.Popen(['node', 'index.js'])
-    
-    return jsonify({"message": "Bot started successfully", "connected": False})
-
-
-@app.route('/debug/appointments', methods=['GET'])
-@login_required
-def debug_appointments():
-    try:
-        appointments = load_appointments()
         return jsonify({
-            "total_appointments": len(appointments),
-            "appointments": appointments,
-            "file_exists": os.path.exists(APPOINTMENTS_FILE),
-            "file_size": os.path.getsize(APPOINTMENTS_FILE) if os.path.exists(APPOINTMENTS_FILE) else 0
+            "message": "Bot is already running",
+            "connected": bot_connected,
+            "status": "connecting" if not bot_connected else "connected"
+        })
+
+    # Check if auth directory exists and has session data
+    auth_dir = '.wwebjs_auth'
+    session_exists = os.path.exists(auth_dir) and os.path.exists(
+        os.path.join(auth_dir, 'session'))
+
+    # Start the bot
+    try:
+        bot_process = subprocess.Popen(['node', 'index.js'])
+
+        # Wait a moment to check if the process started successfully
+        time.sleep(1)
+        if bot_process.poll() is not None:
+            # Process terminated immediately
+            return jsonify({
+                "message": "Failed to start bot. Check server logs for details.",
+                "connected": False,
+                "error": True,
+                "status": "error"
+            })
+
+        # Emit status update via WebSocket
+        socketio.emit(
+            'bot_status', {'connected': False, 'status': 'connecting'})
+
+        # If we have a session, we might reconnect automatically
+        connection_message = "Bot started successfully. Attempting to reconnect to existing session..." if session_exists else "Bot started successfully. Waiting for connection..."
+
+        return jsonify({
+            "message": connection_message,
+            "connected": False,
+            "status": "connecting",
+            "session_exists": session_exists
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        app.logger.error(f"Error starting bot: {str(e)}")
+        return jsonify({
+            "message": f"Error starting bot: {str(e)}",
+            "connected": False,
+            "error": True,
+            "status": "error"
+        })
 
 
-@app.route('/delete_appointment/<int:index>', methods=['DELETE'])
+@app.route('/stop_bot')
 @login_required
-def delete_appointment(index):
-    try:
-        appointments = load_appointments()
-        if 0 <= index < len(appointments):
-            deleted_appointment = appointments.pop(index)
-            with open(APPOINTMENTS_FILE, 'w') as f:
-                json.dump(appointments, f, indent=2)
+def stop_bot():
+    global bot_process, bot_connected
+
+    # If bot is running, stop it
+    if bot_process is not None and bot_process.poll() is None:
+        try:
+            os.kill(bot_process.pid, signal.SIGTERM)
+            # Wait up to 5 seconds for process to terminate
+            bot_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # Force kill if it doesn't terminate gracefully
+            os.kill(bot_process.pid, signal.SIGKILL)
+        except Exception as e:
+            app.logger.error(f"Error stopping bot: {str(e)}")
             return jsonify({
-                "success": True, 
-                "message": f"Appointment for {deleted_appointment.get('invitee_name')} deleted successfully"
+                "message": f"Error stopping bot: {str(e)}",
+                "connected": bot_connected,
+                "error": True
             })
-        return jsonify({"success": False, "error": "Appointment not found"}), 404
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+
+        bot_process = None
+
+    # Update connection status
+    bot_connected = False
+
+    # Emit status update via WebSocket
+    socketio.emit('bot_status', {'connected': False, 'status': 'stopped'})
+
+    return jsonify({
+        "message": "Bot stopped successfully",
+        "connected": False,
+        "status": "stopped"
+    })
 
 
-@app.route('/download_appointment/<int:index>')
+@app.route('/system_info')
 @login_required
-def download_appointment(index):
-    try:
-        appointments = load_appointments()
-        if 0 <= index < len(appointments):
-            appointment = appointments[index]
-            filename = f"appointment_{appointment['invitee_name']}_{appointment['start_time'].split('T')[0]}.json"
-            # Create a temporary file
-            temp_path = os.path.join(os.path.dirname(APPOINTMENTS_FILE), filename)
-            with open(temp_path, 'w') as f:
-                json.dump(appointment, f, indent=2)
-            
-            # Send file and then delete it
-            response = send_file(
-                temp_path,
-                as_attachment=True,
-                download_name=filename,
-                mimetype='application/json'
-            )
-            
-            # Delete temp file after sending
-            @response.call_on_close
-            def cleanup():
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                    
-            return response
-        return jsonify({"error": "Appointment not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+def system_info():
+    """Endpoint to provide system information for the dashboard."""
+    return jsonify(get_system_info())
 
 
-@app.route('/download_all_appointments')
-@login_required
-def download_all_appointments():
+@app.route('/login.js')
+def serve_login_js():
+    """Serve the login.js file."""
+    return send_file('login.js', mimetype='application/javascript')
+
+
+# WebSocket event handlers
+@socketio.on('connect')
+def handle_connect():
+    """Handle WebSocket connection."""
+    global bot_connected, bot_process
+    client_id = request.sid
+    app.logger.info(f"Client connected: {client_id}")
+
+    # Check if bot process is running
+    bot_running = bot_process is not None and bot_process.poll() is None
+
+    # Determine status
+    status = 'connected' if bot_connected else 'disconnected'
+    if bot_running and not bot_connected:
+        status = 'connecting'
+
+    # Send initial status
+    emit('bot_status', {
+        'connected': bot_connected,
+        'status': status,
+        'bot_running': bot_running
+    })
+
+    # Only send QR code info if the bot is in a connecting state
+    # or if it's already connected
+    if status == 'connecting' or bot_connected:
+        qr_exists = os.path.exists('qr_code.png')
+        emit('qr_code', {
+            'exists': qr_exists,
+            'qr_code_url': f'/get_qr_code?t={int(time.time())}' if qr_exists else None,
+            'status': 'waiting_for_scan' if qr_exists else 'no_qr'
+        })
+
+    # Send system info
+    emit('system_info', get_system_info())
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    app.logger.info(f"Client disconnected: {request.sid}")
+
+# Background task for sending updates
+
+
+def background_update_task():
+    """Background task to periodically update clients with latest information."""
+    global should_run_background_tasks, bot_connected, bot_process
+
+    last_qr_status = False
+    last_bot_status = bot_connected
+    last_bot_running = bot_process is not None and bot_process.poll() is None
+
+    while should_run_background_tasks:
+        try:
+            # Check if bot process is running
+            bot_running = bot_process is not None and bot_process.poll() is None
+
+            # Determine status
+            status = 'connected' if bot_connected else 'disconnected'
+            if bot_running and not bot_connected:
+                status = 'connecting'
+
+            # Check if QR code exists
+            qr_exists = os.path.exists('qr_code.png')
+
+            # Only emit QR code updates if the bot is in a connecting state
+            # or if it's already connected
+            if (status == 'connecting' or bot_connected) and qr_exists != last_qr_status:
+                socketio.emit('qr_code', {
+                    'exists': qr_exists,
+                    'qr_code_url': f'/get_qr_code?t={int(time.time())}' if qr_exists else None,
+                    'status': 'waiting_for_scan' if qr_exists else 'no_qr'
+                })
+                last_qr_status = qr_exists
+
+            # Check bot status and emit if changed
+            if bot_connected != last_bot_status or bot_running != last_bot_running:
+                socketio.emit('bot_status', {
+                    'connected': bot_connected,
+                    'status': status,
+                    'bot_running': bot_running
+                })
+                last_bot_status = bot_connected
+                last_bot_running = bot_running
+
+            # Periodically send system info (every 30 seconds)
+            if int(time.time()) % 30 == 0:
+                socketio.emit('system_info', get_system_info())
+
+            time.sleep(1)
+        except Exception as e:
+            app.logger.error(f"Error in background task: {str(e)}")
+            time.sleep(5)  # Wait longer if there's an error
+
+
+def get_system_info():
+    """Helper function to get system information"""
+    # Get server time
+    server_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Get system uptime
     try:
-        appointments = load_appointments()
-        if not appointments:
-            return jsonify({"error": "No appointments found"}), 404
-            
-        filename = f"all_appointments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        temp_path = os.path.join(os.path.dirname(APPOINTMENTS_FILE), filename)
-        
-        with open(temp_path, 'w') as f:
-            json.dump(appointments, f, indent=2)
-        
-        response = send_file(
-            temp_path,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/json'
-        )
-        
-        @response.call_on_close
-        def cleanup():
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                
-        return response
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        uptime_seconds = time.time() - psutil.boot_time()
+        uptime = str(timedelta(seconds=int(uptime_seconds)))
+    except:
+        uptime = "Unknown"
+
+    # Get Node.js version if available
+    try:
+        node_version = subprocess.check_output(
+            ['node', '--version']).decode().strip()
+    except:
+        node_version = "Not installed"
+
+    # Get Python version
+    python_version = f"{platform.python_version()} ({platform.python_implementation()})"
+
+    return {
+        "server_time": server_time,
+        "uptime": uptime,
+        "node_version": node_version,
+        "python_version": python_version
+    }
 
 
 if __name__ == '__main__':
     app.logger.info("Starting the Flask application...")
-    app.run(debug=True, host='0.0.0.0', port=8080)
+
+    # Start background task in a separate thread
+    background_thread = threading.Thread(target=background_update_task)
+    background_thread.daemon = True
+    background_thread.start()
+
+    try:
+        socketio.run(app, debug=True, host='0.0.0.0',
+                     port=8080, allow_unsafe_werkzeug=True)
+    finally:
+        # Signal background thread to stop
+        should_run_background_tasks = False
+        if background_thread.is_alive():
+            background_thread.join(timeout=5)

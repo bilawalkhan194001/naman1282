@@ -6,9 +6,9 @@ const functions = require('./functions');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
-const calendly = require('./calendly');
 
-const ADMIN_NUMBERS = ['923499490427','97433862975','97430171900','97455082358'];
+// Get admin numbers from environment variable
+const ADMIN_NUMBERS = process.env.ADMIN_NUMBERS ? process.env.ADMIN_NUMBERS.split(',') : ['923499490427', '97433862975', '97430171900', '97455082358'];
 global.ADMIN_NUMBERS = ADMIN_NUMBERS;
 
 const assistant = new OpenAI({
@@ -38,7 +38,6 @@ if (!fs.existsSync(picsFolder)) {
 let isResetMode = false;
 let isInitialized = false;
 let isCheckingMessages = false;
-let calendlyCheckInterval;
 
 function stopBot() {
     isBotActive = false;
@@ -69,16 +68,6 @@ client.on('ready', async () => {
     }
 
     functions.loadIgnoreList();
-    
-    if (calendlyCheckInterval) {
-        clearInterval(calendlyCheckInterval);
-    }
-
-    await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
-    
-    calendlyCheckInterval = setInterval(async () => {
-        await calendly.checkNewAppointments(client, ADMIN_NUMBERS);
-    }, 60 * 1000);
 
     if (!isCheckingMessages) {
         setInterval(checkForNewMessages, 1000);
@@ -91,12 +80,8 @@ client.on('ready', async () => {
             'Content-Type': 'application/json',
         },
     })
-    .then(response => response.json())
-    .catch(error => console.error('Error updating bot status:', error));
-
-    setInterval(async () => {
-        await calendly.checkAndSendReminders(client);
-    }, 60000);
+        .then(response => response.json())
+        .catch(error => console.error('Error updating bot status:', error));
 });
 
 async function checkForNewMessages() {
@@ -169,10 +154,6 @@ client.on('error', (error) => {
 });
 
 client.on('disconnected', (reason) => {
-    if (calendlyCheckInterval) {
-        clearInterval(calendlyCheckInterval);
-    }
-    
     if (fs.existsSync('.wwebjs_auth')) {
         try {
             fs.rmSync('.wwebjs_auth', { recursive: true, force: true });
@@ -180,7 +161,7 @@ client.on('disconnected', (reason) => {
             console.error('Error removing auth folder:', error);
         }
     }
-    
+
     fetch('http://0.0.0.0:8080/set_bot_disconnected', {
         method: 'POST',
         headers: {

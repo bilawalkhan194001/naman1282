@@ -17,6 +17,12 @@ echo "Installing project dependencies..."
 npm install
 pip3 install -r requirements.txt
 
+# Load environment variables from .env file
+if [ -f .env ]; then
+    echo "Loading environment variables from .env file..."
+    export $(grep -v '^#' .env | xargs)
+fi
+
 # Set environment variables
 export FLASK_ENV=production
 export FLASK_APP=dashboard.py
