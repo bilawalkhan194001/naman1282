@@ -33,7 +33,7 @@ PORT=${PORT:-8080}
 # Inform the user about the application URL
 echo "======================================"
 echo "Server will be accessible at:"
-echo "http://localhost:$PORT"
+echo "http://0.0.0.0:$PORT"
 echo "======================================"
 
 # Wait briefly to ensure the port is free
