@@ -15,9 +15,9 @@ import sys
 import psutil
 from dotenv import load_dotenv
 
-# Monkey patch for eventlet compatibility with Python 3.12
-import eventlet
-eventlet.monkey_patch()
+# Monkey patch for gevent compatibility with Python 3.12
+from gevent import monkey
+monkey.patch_all()
 
 # Load environment variables
 load_dotenv()
@@ -25,8 +25,8 @@ load_dotenv()
 app = Flask(__name__)
 # Get secret key from environment variable
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
-# Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*")
+# Initialize SocketIO with gevent
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 logging.basicConfig(level=logging.DEBUG)
 
 # Add these global variables at the top level

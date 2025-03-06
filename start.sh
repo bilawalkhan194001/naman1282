@@ -39,5 +39,5 @@ echo "======================================"
 # Wait briefly to ensure the port is free
 sleep 2
 
-# Start the Flask application with Gunicorn using eventlet worker
-exec gunicorn --worker-class eventlet --bind 0.0.0.0:$PORT dashboard:app
+# Start the Flask application with Gunicorn using gevent worker
+exec gunicorn --worker-class gevent --bind 0.0.0.0:$PORT dashboard:app
