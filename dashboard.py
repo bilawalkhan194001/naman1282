@@ -15,6 +15,10 @@ import sys
 import psutil
 from dotenv import load_dotenv
 
+# Monkey patch for eventlet compatibility with Python 3.12
+import eventlet
+eventlet.monkey_patch()
+
 # Load environment variables
 load_dotenv()
 

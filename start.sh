@@ -33,11 +33,11 @@ PORT=${PORT:-8080}
 # Inform the user about the application URL
 echo "======================================"
 echo "Server will be accessible at:"
-echo "http://0.0.0.0:$PORT"
+echo "http://localhost:$PORT"
 echo "======================================"
 
 # Wait briefly to ensure the port is free
 sleep 2
 
-# Start the Flask application with Gunicorn
-exec gunicorn --bind 0.0.0.0:$PORT dashboard:app
+# Start the Flask application with Gunicorn using eventlet worker
+exec gunicorn --worker-class eventlet --bind 0.0.0.0:$PORT dashboard:app
