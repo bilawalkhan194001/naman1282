@@ -40,4 +40,4 @@ echo "======================================"
 sleep 2
 
 # Start the Flask application with Gunicorn using gevent worker
-exec gunicorn --worker-class gevent --bind 0.0.0.0:$PORT dashboard:app
+exec gunicorn --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --bind 0.0.0.0:$PORT dashboard:app

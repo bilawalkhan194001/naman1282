@@ -15,12 +15,28 @@ const assistant = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY || '',
 });
 
+// Maximum number of reconnection attempts
+const MAX_RECONNECT_ATTEMPTS = 5;
+let reconnectAttempts = 0;
+let reconnectTimeout = null;
+
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox'],
-    }
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ],
+        timeout: 60000, // Increase timeout to 60 seconds
+    },
+    restartOnAuthFail: true,
 });
 
 let isBotActive = true;
@@ -38,13 +54,21 @@ if (!fs.existsSync(picsFolder)) {
 let isResetMode = false;
 let isInitialized = false;
 let isCheckingMessages = false;
+let messageCheckInterval = null;
 
 function stopBot() {
     isBotActive = false;
+    if (messageCheckInterval) {
+        clearInterval(messageCheckInterval);
+        messageCheckInterval = null;
+    }
 }
 
 function startBot() {
     isBotActive = true;
+    if (!messageCheckInterval && isInitialized) {
+        messageCheckInterval = setInterval(checkForNewMessages, 5000);
+    }
 }
 
 client.on('qr', (qr) => {
@@ -60,20 +84,30 @@ client.on('qr', (qr) => {
     });
 });
 
-client.on('ready', async () => {
+client.on('ready', () => {
+    console.log('Client is ready!');
+    isInitialized = true;
+
+    // Get the bot's own number
     botNumber = client.info.wid.user;
 
+    // Add bot number to admin numbers if not already included
     if (!ADMIN_NUMBERS.includes(botNumber)) {
         ADMIN_NUMBERS.push(botNumber);
     }
 
+    // Load ignore list
     functions.loadIgnoreList();
 
-    if (!isCheckingMessages) {
-        setInterval(checkForNewMessages, 1000);
-        isCheckingMessages = true;
+    // Start checking for messages
+    if (isBotActive && !messageCheckInterval) {
+        messageCheckInterval = setInterval(checkForNewMessages, 5000);
     }
 
+    // Reset reconnection attempts on successful connection
+    reconnectAttempts = 0;
+
+    // Update bot status on dashboard
     fetch('http://0.0.0.0:8080/set_bot_connected', {
         method: 'POST',
         headers: {
@@ -85,7 +119,18 @@ client.on('ready', async () => {
 });
 
 async function checkForNewMessages() {
+    if (!isBotActive || isCheckingMessages) return;
+
+    isCheckingMessages = true;
     try {
+        // Check if client is ready
+        if (!client.pupPage || !client.pupBrowser) {
+            console.log("WhatsApp client not ready, attempting to reconnect...");
+            await handleReconnection();
+            isCheckingMessages = false;
+            return;
+        }
+
         const chat = await client.getChatById(`${botNumber}@c.us`);
         const messages = await chat.fetchMessages({ limit: 1 });
 
@@ -99,8 +144,79 @@ async function checkForNewMessages() {
                 }
             }
         }
+        // Reset reconnect attempts on successful operation
+        reconnectAttempts = 0;
     } catch (error) {
         console.error('Error checking for new messages:', error);
+
+        // Check if it's a session closed error
+        if (error.message && error.message.includes('Session closed')) {
+            await handleReconnection();
+        }
+    } finally {
+        isCheckingMessages = false;
+    }
+}
+
+async function handleReconnection() {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.error(`Maximum reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Please restart the application manually.`);
+        stopBot();
+
+        // Notify dashboard about disconnection
+        try {
+            await fetch('http://localhost:8080/set_bot_disconnected', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: 'disconnected' })
+            });
+        } catch (err) {
+            console.error('Failed to notify dashboard about disconnection:', err);
+        }
+
+        return;
+    }
+
+    reconnectAttempts++;
+    console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+
+    // Clear existing interval
+    if (messageCheckInterval) {
+        clearInterval(messageCheckInterval);
+        messageCheckInterval = null;
+    }
+
+    // Try to initialize the client again
+    try {
+        if (client.pupBrowser) {
+            await client.pupBrowser.close();
+        }
+
+        // Wait before reconnecting
+        const delay = reconnectAttempts * 5000; // Increasing backoff delay
+        console.log(`Waiting ${delay / 1000} seconds before reconnecting...`);
+
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+        }
+
+        reconnectTimeout = setTimeout(async () => {
+            try {
+                await client.initialize();
+                console.log('Client reinitialized successfully');
+
+                // Restart message checking interval
+                if (isBotActive && !messageCheckInterval) {
+                    messageCheckInterval = setInterval(checkForNewMessages, 5000);
+                }
+            } catch (err) {
+                console.error('Failed to reinitialize client:', err);
+            }
+        }, delay);
+    } catch (err) {
+        console.error('Error during reconnection attempt:', err);
     }
 }
 
@@ -153,7 +269,15 @@ client.on('error', (error) => {
     console.error('An error occurred:', error);
 });
 
-client.on('disconnected', (reason) => {
+client.on('disconnected', async (reason) => {
+    console.log('Client was disconnected:', reason);
+
+    // Clear message checking interval
+    if (messageCheckInterval) {
+        clearInterval(messageCheckInterval);
+        messageCheckInterval = null;
+    }
+
     if (fs.existsSync('.wwebjs_auth')) {
         try {
             fs.rmSync('.wwebjs_auth', { recursive: true, force: true });
@@ -162,17 +286,45 @@ client.on('disconnected', (reason) => {
         }
     }
 
-    fetch('http://0.0.0.0:8080/set_bot_disconnected', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-    }).catch(error => {
+    // Notify dashboard about disconnection
+    try {
+        await fetch('http://0.0.0.0:8080/set_bot_disconnected', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+    } catch (error) {
         console.error('Error updating disconnected status:', error);
-    });
+    }
+
+    // Attempt to reconnect if not manually stopped
+    if (isBotActive) {
+        await handleReconnection();
+    }
+});
+
+// Add more robust error handling
+client.on('auth_failure', async (error) => {
+    console.error('Authentication failure:', error);
+
+    // Clear message checking interval
+    if (messageCheckInterval) {
+        clearInterval(messageCheckInterval);
+        messageCheckInterval = null;
+    }
+
+    // Attempt to reconnect
+    if (isBotActive) {
+        await handleReconnection();
+    }
 });
 
 if (!isInitialized) {
-    client.initialize();
-    isInitialized = true;
+    console.log('Initializing WhatsApp client...');
+    client.initialize().catch(err => {
+        console.error('Failed to initialize client:', err);
+        // Attempt to reconnect on initialization failure
+        handleReconnection();
+    });
 }
