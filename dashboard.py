@@ -14,6 +14,14 @@ import platform
 import sys
 import psutil
 from dotenv import load_dotenv
+import uuid
+import tempfile
+import re
+import random
+import werkzeug.utils
+from werkzeug.utils import secure_filename
+import openpyxl
+from openpyxl.styles import PatternFill
 
 # Monkey patch for gevent compatibility with Python 3.12
 from gevent import monkey
@@ -26,8 +34,18 @@ app = Flask(__name__)
 # Get secret key from environment variable
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'default_secret_key')
 # Initialize SocketIO with gevent
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+socketio = SocketIO(app, cors_allowed_origins="*",
+                    async_mode='gevent', logger=True, engineio_logger=True)
 logging.basicConfig(level=logging.DEBUG)
+
+# Create uploads directory if it doesn't exist
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+# Configure file uploads
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Add these global variables at the top level
 bot_process = None
@@ -38,6 +56,24 @@ should_run_background_tasks = True
 # Get dashboard credentials from environment variables
 DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'ai')
 DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'WH102938jp..@')
+
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+
+# Helper function to check allowed file extensions
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Helper function to validate phone number
+
+
+def is_valid_phone_number(number):
+    # Remove plus sign if present
+    if number.startswith('+'):
+        number = number[1:]
+    # Check if the number contains only digits and has a reasonable length
+    return number.isdigit() and 8 <= len(number) <= 15
 
 
 def login_required(f):
@@ -325,7 +361,420 @@ def serve_login_js():
     return send_file('login.js', mimetype='application/javascript')
 
 
+# Excel Bulk Messaging Routes
+@app.route('/upload_excel', methods=['POST'])
+@login_required
+def upload_excel():
+    if not bot_connected:
+        return jsonify({
+            "success": False,
+            "message": "WhatsApp bot is not connected. Please connect the bot first."
+        })
+
+    # Check if file was included in the request
+    if 'excel_file' not in request.files:
+        return jsonify({
+            "success": False,
+            "message": "No file provided"
+        })
+
+    file = request.files['excel_file']
+
+    # Check if a file was selected
+    if file.filename == '':
+        return jsonify({
+            "success": False,
+            "message": "No file selected"
+        })
+
+    # Check if the file is allowed
+    if not allowed_file(file.filename):
+        return jsonify({
+            "success": False,
+            "message": "Invalid file format. Only Excel files (.xlsx, .xls) are allowed."
+        })
+
+    # Generate a unique filename to prevent overwriting
+    filename = str(uuid.uuid4()) + '_' + secure_filename(file.filename)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    try:
+        # Save the uploaded file
+        file.save(file_path)
+
+        # Process the Excel file to validate its structure
+        try:
+            workbook = openpyxl.load_workbook(file_path)
+            sheet = workbook.active
+
+            # Check if the file has the required structure
+            if sheet.max_column < 2:
+                os.remove(file_path)  # Clean up
+                return jsonify({
+                    "success": False,
+                    "message": "Invalid Excel format. The file must have at least 2 columns (Name and Phone Number)."
+                })
+
+            # Count valid numbers
+            total_numbers = 0
+            processed_numbers = 0
+            invalid_numbers = 0
+
+            # Start from the second row (skip header)
+            for row in range(2, sheet.max_row + 1):
+                phone_number = str(sheet.cell(row=row, column=2).value or "")
+                status = str(sheet.cell(
+                    row=row, column=3).value or "").strip().lower()
+
+                if phone_number:
+                    total_numbers += 1
+
+                    # Check if this number has already been processed
+                    if status in ["success", "fail", "number doesn't exist on whatsapp"]:
+                        processed_numbers += 1
+
+                    # Check if phone number is valid
+                    if not is_valid_phone_number(phone_number):
+                        invalid_numbers += 1
+
+            # Save the processed file
+            workbook.save(file_path)
+
+            # Return success response with session ID and file info
+            return jsonify({
+                "success": True,
+                "message": "File uploaded successfully",
+                "filename": filename,
+                "total_numbers": total_numbers,
+                "processed_numbers": processed_numbers,
+                "remaining_numbers": total_numbers - processed_numbers,
+                "invalid_numbers": invalid_numbers
+            })
+
+        except Exception as e:
+            # If there's an error processing the Excel file, remove it and return error
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return jsonify({
+                "success": False,
+                "message": f"Error processing Excel file: {str(e)}"
+            })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error saving file: {str(e)}"
+        })
+
+
+@app.route('/start_bulk_messaging', methods=['POST'])
+@login_required
+def start_bulk_messaging():
+    if not bot_connected:
+        return jsonify({
+            "success": False,
+            "message": "WhatsApp bot is not connected. Please connect the bot first."
+        })
+
+    data = request.json
+    filename = data.get('filename')
+    message_text = data.get('message', '')
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    # Validate inputs
+    if not filename or not os.path.exists(file_path):
+        return jsonify({
+            "success": False,
+            "message": "Invalid file or file not found"
+        })
+
+    if not message_text:
+        return jsonify({
+            "success": False,
+            "message": "Message text is required"
+        })
+
+    # Check if image was uploaded
+    has_image = data.get('has_image', False)
+    image_data = data.get('image_data', None)
+
+    # Start a background thread to process the messages
+    thread = threading.Thread(
+        target=process_bulk_messages,
+        args=(file_path, message_text, has_image, image_data)
+    )
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        "success": True,
+        "message": "Bulk messaging started in the background"
+    })
+
+
+@app.route('/download_excel/<filename>')
+@login_required
+def download_excel(filename):
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    # Check if file exists
+    if not os.path.exists(file_path):
+        return jsonify({
+            "success": False,
+            "message": "File not found"
+        }), 404
+
+    # Return the file for download
+    return send_file(file_path, as_attachment=True)
+
+
+@app.route('/get_progress/<filename>')
+@login_required
+def get_progress(filename):
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    # Check if file exists
+    if not os.path.exists(file_path):
+        return jsonify({
+            "success": False,
+            "message": "File not found"
+        }), 404
+
+    try:
+        # Load the Excel file to check progress
+        workbook = openpyxl.load_workbook(file_path)
+        sheet = workbook.active
+
+        total_numbers = 0
+        processed_numbers = 0
+        success_count = 0
+        fail_count = 0
+        not_on_whatsapp_count = 0
+
+        # Start from the second row (skip header)
+        for row in range(2, sheet.max_row + 1):
+            phone_number = str(sheet.cell(row=row, column=2).value or "")
+            status = str(sheet.cell(
+                row=row, column=3).value or "").strip().lower()
+
+            if phone_number:
+                total_numbers += 1
+
+                if status == "success":
+                    processed_numbers += 1
+                    success_count += 1
+                elif status == "fail":
+                    processed_numbers += 1
+                    fail_count += 1
+                elif status in ["number doesn't exist on whatsapp", "number doesn't exist on whatsapp"]:
+                    processed_numbers += 1
+                    not_on_whatsapp_count += 1
+
+        return jsonify({
+            "success": True,
+            "total_numbers": total_numbers,
+            "processed_numbers": processed_numbers,
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "not_on_whatsapp_count": not_on_whatsapp_count,
+            "progress_percentage": (processed_numbers / total_numbers * 100) if total_numbers > 0 else 0
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error getting progress: {str(e)}"
+        })
+
+
+def process_bulk_messages(file_path, message_text, has_image, image_data):
+    try:
+        # Load the Excel file
+        workbook = openpyxl.load_workbook(file_path)
+        sheet = workbook.active
+
+        # Define status cell colors
+        success_fill = PatternFill(
+            start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        fail_fill = PatternFill(start_color="FFC7CE",
+                                end_color="FFC7CE", fill_type="solid")
+        not_on_whatsapp_fill = PatternFill(
+            start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+
+        # Create a temporary file for the image if provided
+        temp_image_path = None
+        if has_image and image_data:
+            # Remove the data:image/jpeg;base64, prefix
+            image_data = image_data.split(
+                ',')[1] if ',' in image_data else image_data
+
+            # Create a temporary file
+            temp_fd, temp_image_path = tempfile.mkstemp(suffix='.jpg')
+            os.close(temp_fd)
+
+            # Write the decoded image data to the temporary file
+            with open(temp_image_path, 'wb') as f:
+                import base64
+                f.write(base64.b64decode(image_data))
+
+        # Process each row in the Excel file
+        for row in range(2, sheet.max_row + 1):
+            # Get the name and phone number
+            name = str(sheet.cell(row=row, column=1).value or "")
+            phone_number = str(sheet.cell(row=row, column=2).value or "")
+            status = str(sheet.cell(
+                row=row, column=3).value or "").strip().lower()
+
+            # Skip rows that have already been processed
+            if status in ["success", "fail", "number doesn't exist on whatsapp"]:
+                continue
+
+            # Skip empty phone numbers
+            if not phone_number:
+                continue
+
+            # Format the phone number (remove + if present)
+            if phone_number.startswith('+'):
+                phone_number = phone_number[1:]
+
+            # Replace placeholders in the message
+            personalized_message = message_text.replace('{name}', name)
+
+            # Send the message
+            try:
+                # Create payload for sending message
+                if has_image and temp_image_path:
+                    # Run JavaScript to send message with image
+                    send_script = f"""
+                    const {MessageMedia} = require('whatsapp-web.js');
+                    const fs = require('fs');
+                    
+                    (async () => {{
+                        try {{
+                            // Check if number exists on WhatsApp
+                            const isRegistered = await client.isRegisteredUser('{phone_number}@c.us');
+                            if (!isRegistered) {{
+                                console.log('NUMBER_NOT_ON_WHATSAPP');
+                                return;
+                            }}
+                            
+                            // Send the image with caption
+                            const media = MessageMedia.fromFilePath('{temp_image_path.replace('\\', '\\\\')}');
+                            await client.sendMessage('{phone_number}@c.us', media, {{ caption: `{personalized_message}` }});
+                            console.log('SUCCESS');
+                        }} catch(error) {{
+                            console.log('ERROR: ' + error.message);
+                        }}
+                    }})();
+                    """
+
+                    # Write the script to a temporary file
+                    temp_script_fd, temp_script_path = tempfile.mkstemp(
+                        suffix='.js')
+                    os.close(temp_script_fd)
+                    with open(temp_script_path, 'w') as f:
+                        f.write(send_script)
+
+                    # Run the script with Node.js
+                    process = subprocess.Popen(
+                        ['node', temp_script_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    stdout, stderr = process.communicate()
+
+                    # Clean up the temporary script
+                    os.remove(temp_script_path)
+
+                    # Check the result
+                    if 'SUCCESS' in stdout:
+                        status = "Success"
+                        sheet.cell(row=row, column=3).fill = success_fill
+                    elif 'NUMBER_NOT_ON_WHATSAPP' in stdout:
+                        status = "Number Doesn't Exist on WhatsApp"
+                        sheet.cell(
+                            row=row, column=3).fill = not_on_whatsapp_fill
+                    else:
+                        status = "Fail"
+                        sheet.cell(row=row, column=3).fill = fail_fill
+                else:
+                    # Run JavaScript to send text message only
+                    send_script = f"""
+                    (async () => {{
+                        try {{
+                            // Check if number exists on WhatsApp
+                            const isRegistered = await client.isRegisteredUser('{phone_number}@c.us');
+                            if (!isRegistered) {{
+                                console.log('NUMBER_NOT_ON_WHATSAPP');
+                                return;
+                            }}
+                            
+                            // Send the message
+                            await client.sendMessage('{phone_number}@c.us', `{personalized_message}`);
+                            console.log('SUCCESS');
+                        }} catch(error) {{
+                            console.log('ERROR: ' + error.message);
+                        }}
+                    }})();
+                    """
+
+                    # Write the script to a temporary file
+                    temp_script_fd, temp_script_path = tempfile.mkstemp(
+                        suffix='.js')
+                    os.close(temp_script_fd)
+                    with open(temp_script_path, 'w') as f:
+                        f.write(send_script)
+
+                    # Run the script with Node.js
+                    process = subprocess.Popen(
+                        ['node', temp_script_path],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    stdout, stderr = process.communicate()
+
+                    # Clean up the temporary script
+                    os.remove(temp_script_path)
+
+                    # Check the result
+                    if 'SUCCESS' in stdout:
+                        status = "Success"
+                        sheet.cell(row=row, column=3).fill = success_fill
+                    elif 'NUMBER_NOT_ON_WHATSAPP' in stdout:
+                        status = "Number Doesn't Exist on WhatsApp"
+                        sheet.cell(
+                            row=row, column=3).fill = not_on_whatsapp_fill
+                    else:
+                        status = "Fail"
+                        sheet.cell(row=row, column=3).fill = fail_fill
+
+            except Exception as e:
+                status = "Fail"
+                sheet.cell(row=row, column=3).fill = fail_fill
+                print(f"Error sending message to {phone_number}: {str(e)}")
+
+            # Update the status in the Excel file
+            sheet.cell(row=row, column=3).value = status
+
+            # Save the workbook after each message to preserve progress
+            workbook.save(file_path)
+
+            # Add a random delay between messages (10-30 seconds)
+            delay = random.randint(10, 30)
+            time.sleep(delay)
+
+        # Clean up temporary image file if it exists
+        if temp_image_path and os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
+
+    except Exception as e:
+        print(f"Error processing bulk messages: {str(e)}")
+
 # WebSocket event handlers
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle WebSocket connection."""
@@ -459,8 +908,8 @@ if __name__ == '__main__':
     background_thread.start()
 
     try:
-        socketio.run(app, debug=True, host='0.0.0.0',
-                     port=8080, allow_unsafe_werkzeug=True)
+        # Use SocketIO's run method which properly configures the WebSocket server
+        socketio.run(app, host='0.0.0.0', port=8080, debug=True)
     finally:
         # Signal background thread to stop
         should_run_background_tasks = False

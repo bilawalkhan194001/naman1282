@@ -212,12 +212,17 @@
             <div class="p-3">
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link active" href="#">
+                        <a class="nav-link active" href="#" onclick="showTab('dashboard-tab')">
                             <i class="bi bi-speedometer2"></i>Dashboard
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="refreshSystemInfo()">
+                        <a class="nav-link" href="#" onclick="showTab('bulk-messaging-tab')">
+                            <i class="bi bi-file-earmark-spreadsheet"></i>Bulk Messaging
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="refreshSystemInfo(); showTab('system-info-tab')">
                             <i class="bi bi-info-circle"></i>System Info
                         </a>
                     </li>
@@ -233,92 +238,266 @@
         <!-- Main Content -->
         <div class="main-content">
             <div class="container-fluid">
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h2 class="mb-4">Bot Status</h2>
-                        <div class="card status-card fade-in" id="statusCard">
-                            <div class="card-body d-flex align-items-center">
-                                <div class="status-icon disconnected" id="statusIcon">
-                                    <i class="bi bi-x-circle-fill"></i>
-                                </div>
-                                <div class="ms-3">
-                                    <h5 class="card-title" id="statusTitle">Disconnected</h5>
-                                    <p class="card-text text-muted" id="statusText">The WhatsApp bot is currently disconnected. Please start the bot or scan the QR code to connect.</p>
+                <!-- Dashboard Tab -->
+                <div class="tab-content active" id="dashboard-tab">
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h2 class="mb-4">Bot Status</h2>
+                            <div class="card status-card fade-in" id="statusCard">
+                                <div class="card-body d-flex align-items-center">
+                                    <div class="status-icon disconnected" id="statusIcon">
+                                        <i class="bi bi-x-circle-fill"></i>
+                                    </div>
+                                    <div class="ms-3">
+                                        <h5 class="card-title" id="statusTitle">Disconnected</h5>
+                                        <p class="card-text text-muted" id="statusText">The WhatsApp bot is currently disconnected. Please start the bot or scan the QR code to connect.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="row mb-4">
-                    <div class="col-md-6 mb-4 mb-md-0">
-                        <div class="card h-100">
-                            <div class="card-header bg-transparent">
-                                <h5 class="mb-0">Quick Actions</h5>
+                    <div class="row mb-4">
+                        <div class="col-md-6 mb-4 mb-md-0">
+                            <div class="card h-100">
+                                <div class="card-header bg-transparent">
+                                    <h5 class="mb-0">Quick Actions</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-grid gap-3">
+                                        <button class="btn btn-whatsapp" id="startBotBtn" onclick="startBot()">
+                                            <i class="bi bi-play-circle me-2"></i>Start Bot
+                                        </button>
+                                        <button class="btn btn-danger" id="stopBotBtn" onclick="stopBot()">
+                                            <i class="bi bi-stop-circle me-2"></i>Stop Bot
+                                        </button>
+                                        <button class="btn btn-reset" id="resetBotBtn" onclick="resetBot()">
+                                            <i class="bi bi-arrow-repeat me-2"></i>Reset Bot
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <div class="d-grid gap-3">
-                                    <button class="btn btn-whatsapp" id="startBotBtn" onclick="startBot()">
-                                        <i class="bi bi-play-circle me-2"></i>Start Bot
-                                    </button>
-                                    <button class="btn btn-danger" id="stopBotBtn" onclick="stopBot()">
-                                        <i class="bi bi-stop-circle me-2"></i>Stop Bot
-                                    </button>
-                                    <button class="btn btn-reset" id="resetBotBtn" onclick="resetBot()">
-                                        <i class="bi bi-arrow-repeat me-2"></i>Reset Bot
-                                    </button>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-header bg-transparent">
+                                    <h5 class="mb-0">Connection Status</h5>
+                                </div>
+                                <div class="card-body text-center">
+                                    <div id="qr-code" class="qr-container">
+                                        <!-- QR code will be displayed here -->
+                                        <p class="text-muted mb-0">Click Start Bot to begin</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-6">
-                        <div class="card h-100">
-                            <div class="card-header bg-transparent">
-                                <h5 class="mb-0">Connection Status</h5>
-                            </div>
-                            <div class="card-body text-center">
-                                <div id="qr-code" class="qr-container">
-                                    <!-- QR code will be displayed here -->
-                                    <p class="text-muted mb-0">Click Start Bot to begin</p>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">System Information</h5>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="refreshSystemInfo()">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row" id="systemInfo">
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Server Time</span>
+                                                <span class="fw-medium" id="serverTime">Loading...</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Uptime</span>
+                                                <span class="fw-medium" id="uptime">Loading...</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Node.js Version</span>
+                                                <span class="fw-medium" id="nodeVersion">Loading...</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Python Version</span>
+                                                <span class="fw-medium" id="pythonVersion">Loading...</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0">System Information</h5>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="refreshSystemInfo()">
-                                    <i class="bi bi-arrow-clockwise"></i>
-                                </button>
+                <!-- Bulk Messaging Tab -->
+                <div class="tab-content" id="bulk-messaging-tab">
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h2 class="mb-4">Excel Bulk Messaging</h2>
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="alert alert-info">
+                                        <i class="bi bi-info-circle-fill me-2"></i>
+                                        <strong>Instructions:</strong> Upload an Excel file with the following structure:
+                                        <ul>
+                                            <li><strong>Column 1:</strong> Names</li>
+                                            <li><strong>Column 2:</strong> Phone numbers (with country code, e.g., 923499490427 or +923499490427)</li>
+                                            <li><strong>Column 3:</strong> Status (will be filled automatically)</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <div id="bulk-step-1" class="bulk-step active">
+                                        <h5>Step 1: Upload Excel File</h5>
+                                        <form id="excel-upload-form" enctype="multipart/form-data">
+                                            <div class="mb-3">
+                                                <label for="excel-file" class="form-label">Select Excel File</label>
+                                                <input type="file" class="form-control" id="excel-file" name="excel_file" accept=".xlsx,.xls">
+                                                <div class="form-text">Only Excel files (.xlsx, .xls) are supported.</div>
+                                            </div>
+                                            <button type="submit" class="btn btn-primary">Upload & Validate</button>
+                                        </form>
+                                    </div>
+                                    
+                                    <div id="bulk-step-2" class="bulk-step">
+                                        <h5>Step 2: Compose Message</h5>
+                                        <div class="alert alert-success" id="file-info">
+                                            <i class="bi bi-check-circle-fill me-2"></i>
+                                            <span id="file-info-text"></span>
+                                        </div>
+                                        
+                                        <form id="message-form">
+                                            <div class="mb-3">
+                                                <label for="message-text" class="form-label">Message Text</label>
+                                                <textarea class="form-control" id="message-text" rows="4" placeholder="Type your message here. Use {name} to personalize with recipient's name."></textarea>
+                                                <div class="form-text">Use {name} to include the recipient's name from the Excel file.</div>
+                                            </div>
+                                            
+                                            <div class="mb-3">
+                                                <label for="attachment-image" class="form-label">Attach Image (Optional)</label>
+                                                <input type="file" class="form-control" id="attachment-image" accept="image/*">
+                                                <div class="form-text">Max file size: 5MB. Supported formats: JPG, PNG, GIF.</div>
+                                            </div>
+                                            
+                                            <div class="d-flex justify-content-between">
+                                                <button type="button" class="btn btn-secondary" onclick="backToStep1()">Back</button>
+                                                <button type="submit" class="btn btn-primary">Proceed to Send</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    
+                                    <div id="bulk-step-3" class="bulk-step">
+                                        <h5>Step 3: Send Messages</h5>
+                                        <div class="alert alert-info mb-4">
+                                            <i class="bi bi-info-circle-fill me-2"></i>
+                                            <span>Ready to start sending messages. A random delay of 10-30 seconds will be applied between messages to avoid detection.</span>
+                                        </div>
+                                        
+                                        <div class="card mb-4">
+                                            <div class="card-header bg-transparent">
+                                                <h6 class="mb-0">Message Preview</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <div id="message-preview" class="p-3 border rounded bg-light"></div>
+                                                <div id="image-preview" class="mt-3 text-center d-none">
+                                                    <img src="" alt="Attachment Preview" class="img-fluid rounded" style="max-height: 200px;">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-4">
+                                            <button type="button" class="btn btn-secondary" onclick="backToStep2()">Back</button>
+                                            <button type="button" class="btn btn-success" id="start-sending-btn">Start Sending</button>
+                                        </div>
+                                        
+                                        <div id="progress-container" class="d-none">
+                                            <h6>Progress</h6>
+                                            <div class="progress mb-3">
+                                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                            </div>
+                                            
+                                            <div class="row text-center mb-3">
+                                                <div class="col">
+                                                    <div class="d-flex flex-column border rounded p-2">
+                                                        <span class="text-muted small">Total</span>
+                                                        <span id="total-count" class="fw-bold">0</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col">
+                                                    <div class="d-flex flex-column border rounded p-2 bg-success bg-opacity-10">
+                                                        <span class="text-muted small">Success</span>
+                                                        <span id="success-count" class="fw-bold text-success">0</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col">
+                                                    <div class="d-flex flex-column border rounded p-2 bg-danger bg-opacity-10">
+                                                        <span class="text-muted small">Failed</span>
+                                                        <span id="fail-count" class="fw-bold text-danger">0</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col">
+                                                    <div class="d-flex flex-column border rounded p-2 bg-warning bg-opacity-10">
+                                                        <span class="text-muted small">Not on WhatsApp</span>
+                                                        <span id="not-on-whatsapp-count" class="fw-bold text-warning">0</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="text-center">
+                                                <a id="download-excel-btn" href="#" class="btn btn-outline-primary">
+                                                    <i class="bi bi-download me-1"></i> Download Updated Excel
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <div class="row" id="systemInfo">
-                                    <div class="col-md-3 col-6 mb-3">
-                                        <div class="d-flex flex-column">
-                                            <span class="text-muted small">Server Time</span>
-                                            <span class="fw-medium" id="serverTime">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- System Info Tab -->
+                <div class="tab-content" id="system-info-tab">
+                    <div class="row">
+                        <div class="col-12">
+                            <h2 class="mb-4">System Information</h2>
+                            <div class="card">
+                                <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">System Details</h5>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="refreshSystemInfo()">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row" id="systemInfo">
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Server Time</span>
+                                                <span class="fw-medium" id="serverTime">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="col-md-3 col-6 mb-3">
-                                        <div class="d-flex flex-column">
-                                            <span class="text-muted small">Uptime</span>
-                                            <span class="fw-medium" id="uptime">Loading...</span>
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Uptime</span>
+                                                <span class="fw-medium" id="uptime">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="col-md-3 col-6 mb-3">
-                                        <div class="d-flex flex-column">
-                                            <span class="text-muted small">Node.js Version</span>
-                                            <span class="fw-medium" id="nodeVersion">Loading...</span>
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Node.js Version</span>
+                                                <span class="fw-medium" id="nodeVersion">Loading...</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="col-md-3 col-6 mb-3">
-                                        <div class="d-flex flex-column">
-                                            <span class="text-muted small">Python Version</span>
-                                            <span class="fw-medium" id="pythonVersion">Loading...</span>
+                                        <div class="col-md-3 col-6 mb-3">
+                                            <div class="d-flex flex-column">
+                                                <span class="text-muted small">Python Version</span>
+                                                <span class="fw-medium" id="pythonVersion">Loading...</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -340,6 +519,8 @@
         let qrCodeFound = false;
         let socket;
         let isLoading = false;
+        let currentExcelFile = null;
+        let progressCheckInterval = null;
 
         // Initialize the dashboard
         document.addEventListener('DOMContentLoaded', function() {
@@ -348,6 +529,12 @@
             
             // Initial status check (will be replaced by WebSocket)
             checkBotStatus();
+            
+            // Add event listeners for Excel processing
+            setupExcelProcessingListeners();
+            
+            // Add styles for bulk messaging steps
+            addBulkMessagingStyles();
             
             // Toggle sidebar on mobile
             document.getElementById('sidebarToggle').addEventListener('click', function() {
@@ -704,6 +891,353 @@
             document.getElementById('uptime').textContent = data.uptime;
             document.getElementById('nodeVersion').textContent = data.node_version;
             document.getElementById('pythonVersion').textContent = data.python_version;
+        }
+
+        // Tab navigation
+        function showTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabId).classList.add('active');
+            
+            // Update active nav link
+            document.querySelectorAll('.sidebar .nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            
+            // Find the link that called this function and make it active
+            const links = document.querySelectorAll('.sidebar .nav-link');
+            for (let i = 0; i < links.length; i++) {
+                if (links[i].getAttribute('onclick') && links[i].getAttribute('onclick').includes(tabId)) {
+                    links[i].classList.add('active');
+                    break;
+                }
+            }
+        }
+        
+        // Add CSS for bulk messaging
+        function addBulkMessagingStyles() {
+            const style = document.createElement('style');
+            style.textContent = `
+                .bulk-step {
+                    display: none;
+                }
+                .bulk-step.active {
+                    display: block;
+                }
+                .tab-content {
+                    display: none;
+                }
+                .tab-content.active {
+                    display: block;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        // Excel Processing Functions
+        function setupExcelProcessingListeners() {
+            // Excel upload form
+            const excelUploadForm = document.getElementById('excel-upload-form');
+            if (excelUploadForm) {
+                excelUploadForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    // Check if WhatsApp bot is connected
+                    if (!isConnected) {
+                        showMessage('Please connect the WhatsApp bot first by starting it and scanning the QR code.', 'danger');
+                        return;
+                    }
+                    
+                    const fileInput = document.getElementById('excel-file');
+                    const file = fileInput.files[0];
+                    
+                    if (!file) {
+                        showMessage('Please select an Excel file to upload.', 'danger');
+                        return;
+                    }
+                    
+                    // Check file extension
+                    const extension = file.name.split('.').pop().toLowerCase();
+                    if (!['xlsx', 'xls'].includes(extension)) {
+                        showMessage('Invalid file format. Only Excel files (.xlsx, .xls) are allowed.', 'danger');
+                        return;
+                    }
+                    
+                    // Upload the file
+                    uploadExcelFile(file);
+                });
+            }
+            
+            // Message form
+            const messageForm = document.getElementById('message-form');
+            if (messageForm) {
+                messageForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const messageText = document.getElementById('message-text').value.trim();
+                    
+                    if (!messageText) {
+                        showMessage('Please enter a message text.', 'danger');
+                        return;
+                    }
+                    
+                    // Preview the message
+                    document.getElementById('message-preview').textContent = messageText;
+                    
+                    // Handle image preview if available
+                    const imageInput = document.getElementById('attachment-image');
+                    const imageFile = imageInput.files[0];
+                    const imagePreviewContainer = document.getElementById('image-preview');
+                    const imagePreview = imagePreviewContainer.querySelector('img');
+                    
+                    if (imageFile) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            imagePreview.src = e.target.result;
+                            imagePreviewContainer.classList.remove('d-none');
+                        };
+                        reader.readAsDataURL(imageFile);
+                    } else {
+                        imagePreviewContainer.classList.add('d-none');
+                    }
+                    
+                    // Go to step 3
+                    showBulkStep(3);
+                });
+            }
+            
+            // Start sending button
+            const startSendingBtn = document.getElementById('start-sending-btn');
+            if (startSendingBtn) {
+                startSendingBtn.addEventListener('click', function() {
+                    startBulkMessaging();
+                });
+            }
+        }
+        
+        function uploadExcelFile(file) {
+            const formData = new FormData();
+            formData.append('excel_file', file);
+            
+            // Show loading state
+            const submitBtn = document.querySelector('#excel-upload-form button[type="submit"]');
+            const originalBtnText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Uploading...';
+            
+            fetch('/upload_excel', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+                
+                if (data.success) {
+                    // Store the filename for later use
+                    currentExcelFile = data.filename;
+                    
+                    // Show success message with file info
+                    const fileInfoText = document.getElementById('file-info-text');
+                    fileInfoText.innerHTML = `File uploaded successfully! 
+                        <strong>${data.total_numbers}</strong> numbers found, 
+                        <strong>${data.processed_numbers}</strong> already processed, 
+                        <strong>${data.remaining_numbers}</strong> remaining to process.`;
+                    
+                    // Go to step 2
+                    showBulkStep(2);
+                } else {
+                    showMessage(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading Excel file:', error);
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+                showMessage('Error uploading file. Please try again.', 'danger');
+            });
+        }
+        
+        function startBulkMessaging() {
+            if (!currentExcelFile) {
+                showMessage('No file uploaded. Please go back and upload an Excel file.', 'danger');
+                return;
+            }
+            
+            const messageText = document.getElementById('message-text').value.trim();
+            if (!messageText) {
+                showMessage('Please enter a message text.', 'danger');
+                return;
+            }
+            
+            // Get image data if available
+            const imageInput = document.getElementById('attachment-image');
+            const imageFile = imageInput.files[0];
+            let imageData = null;
+            let hasImage = false;
+            
+            const startSendingBtn = document.getElementById('start-sending-btn');
+            const originalBtnText = startSendingBtn.textContent;
+            startSendingBtn.disabled = true;
+            startSendingBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Starting...';
+            
+            const processImage = () => {
+                // Create payload and send request
+                const payload = {
+                    filename: currentExcelFile,
+                    message: messageText,
+                    has_image: hasImage,
+                    image_data: imageData
+                };
+                
+                fetch('/start_bulk_messaging', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    startSendingBtn.disabled = false;
+                    startSendingBtn.textContent = originalBtnText;
+                    
+                    if (data.success) {
+                        // Show progress container
+                        document.getElementById('progress-container').classList.remove('d-none');
+                        
+                        // Set up the download button
+                        const downloadBtn = document.getElementById('download-excel-btn');
+                        downloadBtn.href = `/download_excel/${currentExcelFile}`;
+                        
+                        // Start progress checking
+                        startProgressChecking();
+                        
+                        // Disable back buttons
+                        document.querySelectorAll('.bulk-step button.btn-secondary').forEach(btn => {
+                            btn.disabled = true;
+                        });
+                        
+                        // Hide start button
+                        document.getElementById('start-sending-btn').classList.add('d-none');
+                        
+                        showMessage('Bulk messaging started. You can download the Excel file at any time to see progress.', 'success');
+                    } else {
+                        showMessage(data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error starting bulk messaging:', error);
+                    startSendingBtn.disabled = false;
+                    startSendingBtn.textContent = originalBtnText;
+                    showMessage('Error starting bulk messaging. Please try again.', 'danger');
+                });
+            };
+            
+            if (imageFile) {
+                hasImage = true;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    imageData = e.target.result;
+                    processImage();
+                };
+                reader.readAsDataURL(imageFile);
+            } else {
+                processImage();
+            }
+        }
+        
+        function startProgressChecking() {
+            // Clear any existing interval
+            if (progressCheckInterval) {
+                clearInterval(progressCheckInterval);
+            }
+            
+            // Update progress immediately
+            updateProgress();
+            
+            // Set up interval to check progress every 5 seconds
+            progressCheckInterval = setInterval(updateProgress, 5000);
+        }
+        
+        function updateProgress() {
+            if (!currentExcelFile) return;
+            
+            fetch(`/get_progress/${currentExcelFile}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update counts
+                        document.getElementById('total-count').textContent = data.total_numbers;
+                        document.getElementById('success-count').textContent = data.success_count;
+                        document.getElementById('fail-count').textContent = data.fail_count;
+                        document.getElementById('not-on-whatsapp-count').textContent = data.not_on_whatsapp_count;
+                        
+                        // Update progress bar
+                        const progressBar = document.getElementById('progress-bar');
+                        const percentage = data.progress_percentage.toFixed(1);
+                        progressBar.style.width = `${percentage}%`;
+                        progressBar.textContent = `${percentage}%`;
+                        
+                        // If all messages have been processed, stop checking
+                        if (data.processed_numbers >= data.total_numbers) {
+                            clearInterval(progressCheckInterval);
+                            progressCheckInterval = null;
+                            
+                            showMessage('All messages have been processed!', 'success');
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error updating progress:', error);
+                });
+        }
+        
+        function showBulkStep(stepNumber) {
+            // Hide all steps
+            document.querySelectorAll('.bulk-step').forEach(step => {
+                step.classList.remove('active');
+            });
+            
+            // Show the selected step
+            document.getElementById(`bulk-step-${stepNumber}`).classList.add('active');
+        }
+        
+        function backToStep1() {
+            showBulkStep(1);
+        }
+        
+        function backToStep2() {
+            showBulkStep(2);
+        }
+        
+        function showMessage(message, type = 'info') {
+            // Create alert element
+            const alertEl = document.createElement('div');
+            alertEl.className = `alert alert-${type} alert-dismissible fade show`;
+            alertEl.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            // Find a place to show the alert
+            const container = document.querySelector('.bulk-step.active');
+            
+            if (container) {
+                // Insert at the top of the active step
+                container.insertBefore(alertEl, container.firstChild);
+                
+                // Auto-dismiss after 5 seconds
+                setTimeout(() => {
+                    alertEl.classList.remove('show');
+                    setTimeout(() => alertEl.remove(), 150);
+                }, 5000);
+            }
         }
     </script>
 </body>
