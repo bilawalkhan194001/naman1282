@@ -24,8 +24,9 @@ import openpyxl
 from openpyxl.styles import PatternFill
 
 # Monkey patch for gevent compatibility with Python 3.12
+# We're not using WebSockets, so we don't need gevent's WebSocket support
 from gevent import monkey
-monkey.patch_all()
+monkey.patch_all(ssl=False)
 
 # Load environment variables
 load_dotenv()
@@ -47,6 +48,14 @@ if not os.path.exists(UPLOAD_FOLDER):
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
+# Create pics directory if it doesn't exist
+PICS_FOLDER = 'pics'
+if not os.path.exists(PICS_FOLDER):
+    os.makedirs(PICS_FOLDER)
+
+# Configure pics upload
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png'}
+
 # Add these global variables at the top level
 bot_process = None
 bot_connected = False
@@ -54,8 +63,8 @@ bot_connected = False
 should_run_background_tasks = True
 
 # Get dashboard credentials from environment variables
-DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'ai')
-DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'WH102938jp..@')
+DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME', 'bot')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'bot-bot')
 
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 
@@ -807,9 +816,6 @@ def handle_connect():
             'status': 'waiting_for_scan' if qr_exists else 'no_qr'
         })
 
-    # Send system info
-    emit('system_info', get_system_info())
-
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -859,10 +865,6 @@ def background_update_task():
                 last_bot_status = bot_connected
                 last_bot_running = bot_running
 
-            # Periodically send system info (every 30 seconds)
-            if int(time.time()) % 30 == 0:
-                socketio.emit('system_info', get_system_info())
-
             time.sleep(1)
         except Exception as e:
             app.logger.error(f"Error in background task: {str(e)}")
@@ -899,6 +901,229 @@ def get_system_info():
     }
 
 
+@app.route('/upload_image', methods=['POST'])
+@login_required
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({"message": "No image part", "success": False})
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"message": "No image selected", "success": False})
+
+    keywords = request.form.get('keywords', '')
+    if not keywords:
+        return jsonify({"message": "Keywords are required", "success": False})
+
+    # Split keywords by commas and strip whitespace
+    keyword_list = [k.strip().lower()
+                    for k in keywords.split(',') if k.strip()]
+
+    if not keyword_list:
+        return jsonify({"message": "At least one valid keyword is required", "success": False})
+
+    if file and allowed_image_file(file.filename):
+        # Generate a unique filename using uuid
+        filename = secure_filename(file.filename)
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"{str(uuid.uuid4())}.{file_ext}"
+
+        # Create pics directory if it doesn't exist
+        if not os.path.exists('pics'):
+            os.makedirs('pics')
+
+        # Save the file
+        file_path = os.path.join('pics', unique_filename)
+        file.save(file_path)
+
+        # Update the image_keywords.json file
+        try:
+            # Load existing data
+            if os.path.exists('image_keywords.json'):
+                with open('image_keywords.json', 'r') as f:
+                    try:
+                        image_data = json.load(f)
+                    except json.JSONDecodeError:
+                        image_data = {}
+            else:
+                image_data = {}
+
+            # Update data with new image
+            for keyword in keyword_list:
+                if keyword not in image_data:
+                    image_data[keyword] = []
+
+                # Add the image if not already present
+                if unique_filename not in image_data[keyword]:
+                    image_data[keyword].append(unique_filename)
+
+            # Save the updated data
+            with open('image_keywords.json', 'w') as f:
+                json.dump(image_data, f, indent=2)
+
+            return jsonify({
+                "message": "Image uploaded successfully",
+                "success": True,
+                "filename": unique_filename,
+                "keywords": keyword_list
+            })
+
+        except Exception as e:
+            return jsonify({"message": f"Error updating image data: {str(e)}", "success": False})
+
+    return jsonify({"message": "Invalid image file", "success": False})
+
+
+@app.route('/get_images', methods=['GET'])
+@login_required
+def get_images():
+    # Load image keywords data
+    if os.path.exists('image_keywords.json'):
+        with open('image_keywords.json', 'r') as f:
+            try:
+                image_data = json.load(f)
+            except json.JSONDecodeError:
+                image_data = {}
+    else:
+        image_data = {}
+
+    # Get list of actual image files in the pics directory
+    pic_files = []
+    if os.path.exists('pics'):
+        pic_files = [f for f in os.listdir('pics') if os.path.isfile(os.path.join('pics', f))
+                     and allowed_image_file(f)]
+
+    # Create a list of images with their keywords
+    images = []
+    for keyword, files in image_data.items():
+        for file in files:
+            if file in pic_files:  # Only include files that actually exist
+                image_info = {
+                    "filename": file,
+                    "path": f"/pics/{file}",
+                    "keywords": []
+                }
+                # Find all keywords associated with this file
+                for k, f_list in image_data.items():
+                    if file in f_list:
+                        image_info["keywords"].append(k)
+
+                # Only add each image once
+                if not any(img["filename"] == file for img in images):
+                    images.append(image_info)
+
+    return jsonify({"images": images})
+
+
+@app.route('/pics/<filename>')
+@login_required
+def serve_image(filename):
+    return send_file(os.path.join('pics', filename))
+
+
+@app.route('/delete_image', methods=['POST'])
+@login_required
+def delete_image():
+    data = request.get_json()
+    if not data or 'filename' not in data:
+        return jsonify({"message": "No filename provided", "success": False})
+
+    filename = data['filename']
+
+    # Check if file exists
+    file_path = os.path.join('pics', filename)
+    if not os.path.exists(file_path):
+        return jsonify({"message": "File not found", "success": False})
+
+    try:
+        # Remove the file
+        os.remove(file_path)
+
+        # Update the image_keywords.json file
+        if os.path.exists('image_keywords.json'):
+            with open('image_keywords.json', 'r') as f:
+                try:
+                    image_data = json.load(f)
+
+                    # Remove the filename from all keyword lists
+                    for keyword in image_data:
+                        if filename in image_data[keyword]:
+                            image_data[keyword].remove(filename)
+
+                    # Remove any empty keyword entries
+                    image_data = {k: v for k, v in image_data.items() if v}
+
+                    # Save the updated data
+                    with open('image_keywords.json', 'w') as f:
+                        json.dump(image_data, f, indent=2)
+
+                except json.JSONDecodeError:
+                    pass
+
+        return jsonify({
+            "message": "Image deleted successfully",
+            "success": True
+        })
+
+    except Exception as e:
+        return jsonify({"message": f"Error deleting image: {str(e)}", "success": False})
+
+
+def allowed_image_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
+@app.route('/get_ignore_list')
+@login_required
+def get_ignore_list():
+    """Endpoint to get the numbers that are in the ignore list"""
+    try:
+        ignore_list_file = 'ignore_list.json'
+        if os.path.exists(ignore_list_file):
+            with open(ignore_list_file, 'r') as f:
+                try:
+                    data = f.read()
+                    # Remove BOM and other potential invalid characters
+                    if data and data[0] == '\ufeff':
+                        data = data[1:]
+                    # Clean the data of any non-printable characters
+                    data = data.replace('\x00', '')
+                    data = data.replace('/[^\x20-\x7E\r\n]/g', '')
+
+                    # Handle empty or malformed file
+                    if data.strip() == '':
+                        return jsonify({"success": True, "ignored_numbers": []})
+
+                    # Try to parse the JSON
+                    ignore_list = json.loads(data)
+                    return jsonify({"success": True, "ignored_numbers": ignore_list})
+                except json.JSONDecodeError as e:
+                    return jsonify({"success": False, "message": f"Error parsing ignore list: {str(e)}"})
+        else:
+            return jsonify({"success": True, "ignored_numbers": []})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Error getting ignore list: {str(e)}"})
+
+
+# Function to broadcast ignore list changes to connected clients
+def notify_ignore_list_change():
+    """Broadcast to all clients that the ignore list has changed"""
+    try:
+        socketio.emit('ignore_list_updated')
+    except Exception as e:
+        app.logger.error(f"Error emitting ignore list update: {str(e)}")
+
+
+@app.route('/notify_ignore_list_update', methods=['POST'])
+def notify_ignore_list_update():
+    """Endpoint to notify all connected clients that the ignore list has been updated"""
+    try:
+        notify_ignore_list_change()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
 if __name__ == '__main__':
     app.logger.info("Starting the Flask application...")
 
@@ -908,8 +1133,17 @@ if __name__ == '__main__':
     background_thread.start()
 
     try:
-        # Use SocketIO's run method which properly configures the WebSocket server
-        socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+        # Update the SocketIO run method to fix WebSocket issues
+        # Note: We're specifically using gevent-websocket for the WebSocket transport
+        # Create a middleware for the WebSocket handler
+        from geventwebsocket.handler import WebSocketHandler
+        from gevent.pywsgi import WSGIServer
+
+        # Use gevent with WebSocketHandler
+        server = WSGIServer(('0.0.0.0', 8080), app,
+                            handler_class=WebSocketHandler)
+        socketio.init_app(app)
+        server.serve_forever()
     finally:
         # Signal background thread to stop
         should_run_background_tasks = False

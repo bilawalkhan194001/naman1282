@@ -99,6 +99,9 @@ client.on('ready', () => {
     // Load ignore list
     functions.loadIgnoreList();
 
+    // Load image keywords
+    functions.loadImageKeywords();
+
     // Start checking for messages
     if (isBotActive && !messageCheckInterval) {
         messageCheckInterval = setInterval(checkForNewMessages, 5000);
@@ -238,6 +241,13 @@ async function processMessage(message) {
         return;
     }
 
+    // Get chat and check if it's a group chat - ignore group messages
+    const chat = await message.getChat();
+    if (chat.isGroup) {
+        console.log('Ignoring message from group chat:', chat.name);
+        return;
+    }
+
     processedMessageIds.add(message.id._serialized);
 
     const senderId = message.from;
@@ -250,12 +260,12 @@ async function processMessage(message) {
 
     if (messageText.toLowerCase().startsWith('!!')) {
         const response = await functions.handleCommand(client, assistant, message, senderNumber, isAdmin, isModerator, stopBot, startBot);
-        if (response && !isBot) {
+        if (response && response.trim() !== '' && !isBot) {
             await client.sendMessage(senderId, response);
         }
     } else if (isBotActive && !isBot && !functions.isIgnored(senderNumber)) {
         const response = await functions.storeUserMessage(client, assistant, senderNumber, message);
-        if (response) {
+        if (response && response.trim() !== '') {
             await client.sendMessage(senderId, response);
         }
     }
